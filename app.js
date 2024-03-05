@@ -78,18 +78,34 @@ function renderNotes() {
     noteTagsElement.innerHTML = highlightTags(note.tags, searchInput.value);
     noteElement.appendChild(noteTagsElement);
 
+    const noteActionsElement = document.createElement('div');
+    noteActionsElement.classList.add('note-actions');
+
     const editNoteButton = document.createElement('button');
-    editNoteButton.classList.add('edit-note');
     editNoteButton.textContent = 'Edit';
     editNoteButton.addEventListener('click', () => {
       editNote(note.id);
     });
-    noteElement.appendChild(editNoteButton);
+    noteActionsElement.appendChild(editNoteButton);
+
+    const deleteNoteButton = document.createElement('button');
+    deleteNoteButton.textContent = 'Delete';
+    deleteNoteButton.addEventListener('click', () => {
+      deleteNote(note.id);
+    });
+    noteActionsElement.appendChild(deleteNoteButton);
+
+    noteElement.appendChild(noteActionsElement);
 
     notesContainer.appendChild(noteElement);
   });
 
-  renderFuzzyResults();
+  // Hide fuzzy results when search bar is empty
+  if (searchInput.value === '') {
+    fuzzyResultsContainer.innerHTML = '';
+  } else {
+    renderFuzzyResults();
+  }
 }
 
 // Render fuzzy search results
@@ -216,6 +232,13 @@ function updateNote(noteId) {
     // Add back the original save note event listener
     saveNoteButton.addEventListener('click', saveNote);
   }
+}
+
+// Delete note function
+function deleteNote(noteId) {
+  notes = notes.filter(note => note.id !== noteId);
+  saveNotes();
+  renderNotes();
 }
 
 // Event listeners

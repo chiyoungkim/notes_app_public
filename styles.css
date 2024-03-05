@@ -59,7 +59,7 @@ body {
     color: #888;
   }
   
-  .edit-note {
+  .note-actions {
     position: absolute;
     top: 5px;
     right: 5px;
@@ -67,7 +67,7 @@ body {
     transition: opacity 0.3s;
   }
   
-  .note:hover .edit-note {
+  .note:hover .note-actions {
     opacity: 1;
   }
   
