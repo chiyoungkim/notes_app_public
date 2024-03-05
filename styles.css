@@ -33,6 +33,11 @@ body {
     margin-bottom: 10px;
   }
   
+  #tag-select {
+    width: 100%;
+    margin-bottom: 10px;
+  }
+  
   #notes-container {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -64,4 +69,12 @@ body {
   
   .note:hover .edit-note {
     opacity: 1;
+  }
+  
+  .highlight {
+    background-color: yellow;
+  }
+  
+  #fuzzy-results-container {
+    margin-top: 20px;
   }
