@@ -78,3 +78,72 @@ body {
   #fuzzy-results-container {
     margin-top: 20px;
   }
+
+  #settings {
+    margin-top: 10px;
+    display: flex;
+    justify-content: flex-start;
+  }
+    
+  #settings label {
+    display: flex;
+    align-items: center;
+    font-size: 14px;
+  }
+    
+  #settings input[type="checkbox"] {
+    margin-right: 5px;
+  }
+
+  #chat-window {
+    margin-top: 20px;
+    border: 1px solid #ccc;
+    padding: 10px;
+  }
+  
+  #chat-messages {
+    max-height: 300px;
+    overflow-y: auto;
+    margin-bottom: 10px;
+  }
+  
+  #chat-input {
+    width: 80%;
+    padding: 5px;
+  }
+  
+  #send-question {
+    width: 18%;
+    padding: 5px;
+  }
+
+  #api-key-container {
+    margin-bottom: 10px;
+  }
+  
+  #api-key-input {
+    width: 300px;
+    padding: 5px;
+  }
+  
+  #set-api-key {
+    padding: 5px 10px;
+  }
+
+  #insights-container {
+    margin-top: 20px;
+  }
+  
+  #insights-output {
+    margin-top: 10px;
+    white-space: pre-wrap;
+  }
+
+  #note-selection {
+    margin-top: 20px;
+  }
+  
+  .selected-note {
+    background-color: #f0f0f0;
+  }
+  

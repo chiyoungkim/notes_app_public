@@ -1,4 +1,6 @@
 let notes = [];
+let selectedNotes = [];
+let selectedModel = 'claude-3-opus-20240229';
 
 const noteInput = document.getElementById('note-input');
 const noteText = document.getElementById('note-text');
@@ -95,6 +97,18 @@ function renderNotes() {
     });
     noteActionsElement.appendChild(deleteNoteButton);
 
+    const selectNoteCheckbox = document.createElement('input');
+    selectNoteCheckbox.type = 'checkbox';
+    selectNoteCheckbox.addEventListener('change', () => {
+      if (selectNoteCheckbox.checked) {
+        selectedNotes.push(note);
+      } else {
+        selectedNotes = selectedNotes.filter(selectedNote => selectedNote.id !== note.id);
+      }
+      renderSelectedNotes();
+    });
+    noteElement.appendChild(selectNoteCheckbox);
+    
     noteElement.appendChild(noteActionsElement);
 
     notesContainer.appendChild(noteElement);
@@ -177,9 +191,14 @@ function saveNotes() {
 }
 
 // Save note function
-function saveNote() {
+async function saveNote() {
   const text = noteText.value.trim();
-  const tags = noteTags.value.trim().split(',').map(tag => tag.trim());
+  let tags = noteTags.value.trim().split(',').map(tag => tag.trim());
+
+  if (isAutoTaggingEnabled) {
+    const generatedTags = await autoTagNote(text);
+    tags = [...tags, ...generatedTags];
+  }
 
   if (text !== '') {
     const note = {
@@ -244,3 +263,190 @@ function deleteNote(noteId) {
 // Event listeners
 searchInput.addEventListener('input', renderNotes);
 tagSelect.addEventListener('change', renderNotes);
+
+const autoTagSetting = document.getElementById('auto-tag-setting');
+let isAutoTaggingEnabled = false;
+
+autoTagSetting.addEventListener('change', () => {
+  isAutoTaggingEnabled = autoTagSetting.checked;
+});
+
+async function autoTagNote(noteText) {
+  if (!isAutoTaggingEnabled || userApiKey === '') {
+    return [];
+  }
+
+  const anthropic = new Anthropic({apiKey: userApiKey});
+
+  const response = await anthropic.messages.create({
+    model: selectedModel,
+    max_tokens: 1024,
+    messages: [
+      {
+        role: 'user',
+        content: `Please generate relevant tags for the following note:\n\n${noteText}\n\nTags:`
+      }
+    ]
+  });
+
+  const generatedTags = response.content[0].text.trim().split(',').map(tag => tag.trim());
+  return generatedTags;
+}
+
+async function queryNotes(question) {
+  if (userApiKey === '') {
+    return 'Please enter your Anthropic API key.';
+  }
+
+  const anthropic = new Anthropic({apiKey: userApiKey});
+
+  const relevantNotes = selectedNotes.filter(note =>
+    note.text.toLowerCase().includes(question.toLowerCase()) ||
+    note.tags.some(tag => tag.toLowerCase().includes(question.toLowerCase()))
+  );
+
+  const relevantNotesText = relevantNotes.map(note => `Note: ${note.text}\nTags: ${note.tags.join(', ')}`).join('\n\n');
+
+  const response = await anthropic.messages.create({
+    model: selectedModel,
+    max_tokens: 1024,
+    messages: [
+      {
+        role: 'user',
+        content: `Here are some relevant notes:\n\n${relevantNotesText}\n\nQuestion: ${question}\n\nAnswer:`
+      }
+    ]
+  });
+
+  return response.content[0].text.trim();
+}
+
+function displayResponse(question, answer) {
+  const chatMessages = document.getElementById('chat-messages');
+
+  const userMessage = document.createElement('div');
+  userMessage.classList.add('chat-message', 'user-message');
+  userMessage.textContent = question;
+  chatMessages.appendChild(userMessage);
+
+  const assistantMessage = document.createElement('div');
+  assistantMessage.classList.add('chat-message', 'assistant-message');
+  assistantMessage.textContent = answer;
+  chatMessages.appendChild(assistantMessage);
+
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+const chatInput = document.getElementById('chat-input');
+const sendQuestionButton = document.getElementById('send-question');
+
+sendQuestionButton.addEventListener('click', async () => {
+  const question = chatInput.value.trim();
+  if (question !== '') {
+    const answer = await queryNotes(question);
+    displayResponse(question, answer);
+    chatInput.value = '';
+  }
+});
+
+let userApiKey = '';
+
+const apiKeyInput = document.getElementById('api-key-input');
+const setApiKeyButton = document.getElementById('set-api-key');
+
+setApiKeyButton.addEventListener('click', () => {
+  userApiKey = apiKeyInput.value.trim();
+  apiKeyInput.value = '';
+});
+
+async function summarizeNotes() {
+  if (userApiKey === '') {
+    return 'Please enter your Anthropic API key.';
+  }
+
+  const anthropic = new Anthropic({apiKey: userApiKey});
+
+  const notesText = selectedNotes.map(note => `Note: ${note.text}\nTags: ${note.tags.join(', ')}`).join('\n\n');
+
+  const response = await anthropic.messages.create({
+    model: selectedModel,
+    max_tokens: 1024,
+    messages: [
+      {
+        role: 'user',
+        content: `Please provide a summary of the following notes:\n\n${notesText}\n\nSummary:`
+      }
+    ]
+  });
+
+  return response.content[0].text.trim();
+}
+
+async function surfaceInsights() {
+  if (userApiKey === '') {
+    return 'Please enter your Anthropic API key.';
+  }
+
+  const anthropic = new Anthropic({apiKey: userApiKey});
+
+  const notesText = selectedNotes.map(note => `Note: ${note.text}\nTags: ${note.tags.join(', ')}`).join('\n\n');
+
+  const response = await anthropic.messages.create({
+    model: selectedModel,
+    max_tokens: 1024,
+    messages: [
+      {
+        role: 'user',
+        content: `Please provide insights and observations based on the following notes:\n\n${notesText}\n\nInsights:`
+      }
+    ]
+  });
+
+  return response.content[0].text.trim();
+}
+
+const summarizeNotesButton = document.getElementById('summarize-notes');
+const surfaceInsightsButton = document.getElementById('surface-insights');
+const insightsOutput = document.getElementById('insights-output');
+
+summarizeNotesButton.addEventListener('click', async () => {
+  const summary = await summarizeNotes();
+  insightsOutput.textContent = summary;
+});
+
+surfaceInsightsButton.addEventListener('click', async () => {
+  const insights = await surfaceInsights();
+  insightsOutput.textContent = insights;
+});
+
+function renderSelectedNotes() {
+  const selectedNotesContainer = document.getElementById('selected-notes');
+  selectedNotesContainer.innerHTML = '';
+
+  selectedNotes.forEach(note => {
+    const noteElement = document.createElement('div');
+    noteElement.textContent = note.text;
+    selectedNotesContainer.appendChild(noteElement);
+  });
+}
+
+const selectAllNotesButton = document.getElementById('select-all-notes');
+const clearSelectedNotesButton = document.getElementById('clear-selected-notes');
+
+selectAllNotesButton.addEventListener('click', () => {
+  selectedNotes = [...notes];
+  renderSelectedNotes();
+  renderNotes();
+});
+
+clearSelectedNotesButton.addEventListener('click', () => {
+  selectedNotes = [];
+  renderSelectedNotes();
+  renderNotes();
+});
+
+const modelSelect = document.getElementById('model-select');
+
+modelSelect.addEventListener('change', () => {
+  selectedModel = modelSelect.value;
+});
