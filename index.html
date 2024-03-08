@@ -6,53 +6,103 @@
 </head>
 <body>
   <div id="app">
-    <div id="note-input">
-      <textarea id="note-text" placeholder="Enter your note..."></textarea>
-      <input type="text" id="note-tags" placeholder="Enter tags (comma-separated)">
-      <div id="settings">
-        <label for="auto-tag-setting">
-          <input type="checkbox" id="auto-tag-setting">
-          <span>Enable LLM Auto-Tagging</span>
-        </label>
+    <div id="header-banner">
+      <button type="button" id="toggle-flyout">Menu</button>
+      <div id="note-input">
+        <textarea id="note-text" placeholder="Enter your note..."></textarea>
+        <input type="text" id="note-tags" placeholder="Enter tags (comma-separated)">
+        <div id="settings">
+          <label for="auto-tag-setting">
+            <input type="checkbox" id="auto-tag-setting">
+            <span>Enable LLM Auto-Tagging</span>
+          </label>
+        </div>
+        <button id="save-note">Save</button>
       </div>
-      <button id="save-note">Save</button>
-    </div>
-    <div id="note-list">
+      <div id="sorting-options">
+        <label for="sort-select">Sort by:</label>
+        <select id="sort-select">
+          <option value="date-desc">Date (Newest first)</option>
+          <option value="date-asc">Date (Oldest first)</option>
+          <option value="title-asc">Title (A-Z)</option>
+          <option value="title-desc">Title (Z-A)</option>
+        </select>
+      </div>
       <input type="text" id="search-input" placeholder="Search notes...">
       <select id="tag-select" multiple></select>
+    </div>
+    <div id="loading-spinner" class="hidden">
+      <div class="spinner"></div>
+      <div class="spinner-text">Loading...</div>
+    </div>
+    <div id="error-message" class="hidden"></div>
+
+    <div id="note-list">
       <div id="notes-container"></div>
-      <div id="fuzzy-results-container"></div>
+    </div>
+    <div id="chat-widget">
+      <div id="chat-window">
+        <div id="api-key-container">
+          <input type="password" id="api-key-input" placeholder="Enter your Anthropic API key">
+          <button id="set-api-key">Set API Key</button>
+        </div>
+        <div id="chat-messages"></div>
+        <input type="text" id="chat-input" placeholder="Ask a question...">
+        <button id="send-question">Send</button>
+        <div id="model-selection">
+          <label for="model-select">Select Model:</label>
+          <select id="model-select">
+            <option value="claude-3-opus-20240229">Claude 3 (Opus)</option>
+            <option value="claude-3-max-20240229">Claude 3 (Max)</option>
+            <option value="claude-3-base-20240229">Claude 3 (Base)</option>
+            <option value="claude-3-fast-20240229">Claude 3 (Fast)</option>
+            <option value="claude-2-100k">Claude 2 (100k)</option>
+            <!-- Add more model options as needed -->
+          </select>
+        </div>
+      </div>
     </div>
   </div>
-  <div id="note-selection">
-    <h3>Select Notes</h3>
-    <div id="selected-notes"></div>
-    <button id="select-all-notes">Select All</button>
-    <button id="clear-selected-notes">Clear Selection</button>
-  </div>
-  <div id="insights-container">
-    <button id="summarize-notes">Summarize Notes</button>
-    <button id="surface-insights">Surface Insights</button>
-    <div id="insights-output"></div>
-  </div>  
-  <div id="chat-window">
-    <div id="api-key-container">
-      <input type="password" id="api-key-input" placeholder="Enter your Anthropic API key">
-      <button id="set-api-key">Set API Key</button>
+
+  <div id="flyout-panel">
+    <button id="toggle-dark-mode">Toggle Dark Mode</button>
+    <div id="note-selection">
+      <h3>Select Notes</h3>
+      <input type="text" id="select-notes-search" placeholder="Search notes...">
+      <select id="select-notes-filter" multiple></select>
+      <div id="selected-notes"></div>
+      <button id="select-all-notes">Select All</button>
+      <button id="clear-selected-notes">Clear Selection</button>
     </div>
-    <div id="chat-messages"></div>
-    <input type="text" id="chat-input" placeholder="Ask a question...">
-    <button id="send-question">Send</button>
-    <div id="model-selection">
-      <label for="model-select">Select Model:</label>
-      <select id="model-select">
-        <option value="claude-3-opus-20240229">Claude 3 (Opus)</option>
-        <option value="claude-3-max-20240229">Claude 3 (Max)</option>
-        <option value="claude-3-base-20240229">Claude 3 (Base)</option>
-        <option value="claude-3-fast-20240229">Claude 3 (Fast)</option>
-        <option value="claude-2-100k">Claude 2 (100k)</option>
-        <!-- Add more model options as needed -->
+    <div id="summarization-options">
+      <h3>Summarization Options</h3>
+      <label for="summary-length">Summary Length:</label>
+      <select id="summary-length">
+        <option value="short">Short</option>
+        <option value="medium">Medium</option>
+        <option value="long">Long</option>
       </select>
+      <!-- Add more options as needed -->
+    </div>
+    
+    <div id="insights-options">
+      <h3>Insights Options</h3>
+      <label for="insights-type">Insights Type:</label>
+      <select id="insights-type">
+        <option value="key-takeaways">Key Takeaways</option>
+        <option value="actionable-items">Actionable Items</option>
+        <option value="patterns-and-trends">Patterns and Trends</option>
+      </select>
+      <!-- Add more options as needed -->
+    </div>
+    <div id="insights-container">
+      <button id="summarize-notes">Summarize Notes</button>
+      <button id="surface-insights">Surface Insights</button>
+      <button id="save-summary">Save Summary</button>
+      <button id="export-summary">Export Summary</button>
+      <button id="save-insights">Save Insights</button>
+      <button id="export-insights">Export Insights</button>
+      <div id="insights-output"></div>
     </div>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk/dist/anthropic.min.js"></script>
