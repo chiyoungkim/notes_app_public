@@ -11,6 +11,8 @@ const tagSelect = document.getElementById('tag-select');
 const notesContainer = document.getElementById('notes-container');
 const selectNotesFilter = document.getElementById('select-notes-filter');
 
+document.addEventListener('DOMContentLoaded', () => {
+
 // Load notes from local storage
 const storedNotes = localStorage.getItem('notes');
 if (storedNotes) {
@@ -344,12 +346,12 @@ async function queryNotes(question) {
         }
       ]
     });
+    return response.content[0].text.trim();
   } catch (error) {
     showErrorMessage('Error querying notes: ' + error.message);
   } finally {
     hideLoadingSpinner();
   }
-  return response.content[0].text.trim();
 }
 
 function displayResponse(question, answer) {
@@ -740,12 +742,6 @@ function disableNoteEdit(noteId, noteElement, noteTextElement, noteTagsElement, 
   noteElement.removeEventListener('keydown', eventHandlers.keydownHandler);
 }
 
-// Function to toggle the flyout panel
-function toggleFlyoutPanel() {
-  const flyoutPanel = document.getElementById('flyout-panel');
-  flyoutPanel.classList.toggle('open');
-}
-
 function toggleDarkMode() {
   document.body.classList.toggle('dark-mode');
 }
@@ -754,4 +750,57 @@ const toggleDarkModeButton = document.getElementById('toggle-dark-mode');
 toggleDarkModeButton.addEventListener('click', toggleDarkMode);
 
 const toggleFlyoutButton = document.getElementById('toggle-flyout');
+
+const flyoutPanel = document.getElementById('flyout-panel');
+const toggleChatButton = document.getElementById('toggle-chat');
+const chatWindow = document.getElementById('chat-window');
+
+// Toggle chat window
+toggleChatButton.addEventListener('click', () => {
+  chatWindow.classList.toggle('open');
+});
+
+function toggleFlyoutPanel() {
+  flyoutPanel.classList.toggle('open');
+}
+
 toggleFlyoutButton.addEventListener('click', toggleFlyoutPanel);
+});
+
+const toggleSortSearchButton = document.getElementById('toggle-sort-search');
+const sortSearchContainer = document.getElementById('sort-search-container');
+const sortingOptions = document.getElementById('sorting-options');
+const searchContainer = document.getElementById('search-container');
+const notesView = document.getElementById('notes-view');
+
+sortSearchContainer.classList.toggle('hidden');
+sortingOptions.classList.toggle('hidden')
+searchContainer.classList.toggle('hidden')
+searchInput.classList.toggle('hidden')
+tagSelect.classList.toggle('hidden')
+sortSearchContainer.style.maxHeight = '0';
+sortSearchContainer.style.margin = '0';
+sortSearchContainer.style.padding = '0';
+
+toggleSortSearchButton.addEventListener('click', () => {
+  sortSearchContainer.classList.toggle('hidden');
+  sortingOptions.classList.toggle('hidden')
+  searchContainer.classList.toggle('hidden')
+  searchInput.classList.toggle('hidden')
+  tagSelect.classList.toggle('hidden')
+
+  if (sortSearchContainer.classList.contains('hidden')) {
+    sortSearchContainer.style.maxHeight = '0';
+    sortSearchContainer.style.margin = '0';
+    sortSearchContainer.style.padding = '0';
+  } else {
+    sortSearchContainer.style.maxHeight = `${sortSearchContainer.scrollHeight}px`;
+    sortSearchContainer.style.margin = '20px';
+    sortSearchContainer.style.padding = '20px';
+  }
+});
+
+function adjustNotesViewMargin(maxHeight) {
+  console.log(maxHeight)
+  notesView.style.marginTop = `${maxHeight + 20}px`;
+}
