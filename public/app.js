@@ -1,5 +1,3 @@
-import './styles.css';
-
 let notes = [];
 let selectedNotes = [];
 let selectedModel = 'claude-3-opus-20240229';
