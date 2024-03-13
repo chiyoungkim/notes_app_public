@@ -2,6 +2,4 @@ source /home/ec2-user/.bash_profile
 
 # Start the Node.js server
 cd /var/www/html/
-node server.js &
-
-exit
+node server.js > /dev/null 2> /dev/null < /dev/null &
