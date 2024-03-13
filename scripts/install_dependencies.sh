@@ -1,7 +1,6 @@
 source /home/ec2-user/.bash_profile
 
 # Install Node.js
-curl -sL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo yum install -y nodejs
 
 # Install project dependencies
