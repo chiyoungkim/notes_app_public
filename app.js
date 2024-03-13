@@ -321,13 +321,30 @@ async function queryNotes(question) {
     return 'Please enter your Anthropic API key.';
   }
 
-  if (selectedNotes.length === 0) {
-    showErrorMessage('Please select notes first.');
-    return;
-  }
-  try {
-    const anthropic = new Anthropic({apiKey: userApiKey});
+  const anthropic = new Anthropic({apiKey: userApiKey});
 
+  if (selectedNotes.length === 0) {
+    // No notes selected, proceed with regular AI chat
+    try {
+      showLoadingSpinner();
+      const response = await anthropic.messages.create({
+        model: selectedModel,
+        max_tokens: 1024,
+        messages: [
+          {
+            role: 'user',
+            content: question,
+          },
+        ],
+      });
+      return response.content[0].text.trim();
+    } catch (error) {
+      showErrorMessage('Error querying AI: ' + error.message);
+    } finally {
+      hideLoadingSpinner();
+    }
+  } else {
+    // Notes are selected, query the selected notes
     const relevantNotes = selectedNotes.filter(note =>
       note.text.toLowerCase().includes(question.toLowerCase()) ||
       note.tags.some(tag => tag.toLowerCase().includes(question.toLowerCase()))
@@ -335,22 +352,24 @@ async function queryNotes(question) {
 
     const relevantNotesText = relevantNotes.map(note => `Note: ${note.text}\nTags: ${note.tags.join(', ')}`).join('\n\n');
 
-    showLoadingSpinner();
-    const response = await anthropic.messages.create({
-      model: selectedModel,
-      max_tokens: 1024,
-      messages: [
-        {
-          role: 'user',
-          content: `Here are some relevant notes:\n\n${relevantNotesText}\n\nQuestion: ${question}\n\nAnswer:`
-        }
-      ]
-    });
-    return response.content[0].text.trim();
-  } catch (error) {
-    showErrorMessage('Error querying notes: ' + error.message);
-  } finally {
-    hideLoadingSpinner();
+    try {
+      showLoadingSpinner();
+      const response = await anthropic.messages.create({
+        model: selectedModel,
+        max_tokens: 1024,
+        messages: [
+          {
+            role: 'user',
+            content: `Here are some relevant notes:\n\n${relevantNotesText}\n\nQuestion: ${question}\n\nAnswer:`,
+          },
+        ],
+      });
+      return response.content[0].text.trim();
+    } catch (error) {
+      showErrorMessage('Error querying notes: ' + error.message);
+    } finally {
+      hideLoadingSpinner();
+    }
   }
 }
 
@@ -765,7 +784,6 @@ function toggleFlyoutPanel() {
 }
 
 toggleFlyoutButton.addEventListener('click', toggleFlyoutPanel);
-});
 
 const toggleSortSearchButton = document.getElementById('toggle-sort-search');
 const sortSearchContainer = document.getElementById('sort-search-container');
@@ -804,3 +822,5 @@ function adjustNotesViewMargin(maxHeight) {
   console.log(maxHeight)
   notesView.style.marginTop = `${maxHeight + 20}px`;
 }
+
+});
