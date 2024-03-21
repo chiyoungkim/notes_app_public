@@ -1,6 +1,7 @@
 let notes = [];
 let selectedNotes = [];
 let selectedModel = 'claude-3-opus-20240229';
+let taggingModel = 'claude-3-haiku-20240307';
 
 const noteInput = document.getElementById('note-input');
 const noteText = document.getElementById('note-text');
@@ -12,38 +13,192 @@ const notesContainer = document.getElementById('notes-container');
 const selectNotesFilter = document.getElementById('select-notes-filter');
 
 document.addEventListener('DOMContentLoaded', () => {
+  fetchNotes();
 
-// Load notes from local storage
-const storedNotes = localStorage.getItem('notes');
-if (storedNotes) {
-  notes = JSON.parse(storedNotes);
-  renderNotes();
-} else {
-  // Pre-fill with 9 filler notes
-  notes = [
-    { id: 1, text: 'Note 1', tags: ['tag1', 'tag2'] },
-    { id: 2, text: 'Note 2', tags: ['tag2', 'tag3'] },
-    { id: 3, text: 'Note 3', tags: ['tag1', 'tag3'] },
-    { id: 4, text: 'Note 4', tags: ['tag4'] },
-    { id: 5, text: 'Note 5', tags: ['tag2', 'tag4'] },
-    { id: 6, text: 'Note 6', tags: ['tag1', 'tag4'] },
-    { id: 7, text: 'Note 7', tags: ['tag3'] },
-    { id: 8, text: 'Note 8', tags: ['tag1', 'tag2', 'tag3'] },
-    { id: 9, text: 'Note 9', tags: ['tag4'] }
-  ];
-  saveNotes();
-  renderNotes();
+  // Fetch notes from the server
+  async function fetchNotes() {
+    try {
+      const sessionToken = sessionStorage.getItem('sessionToken');
+      const response = await fetch('/api/notes', {
+        method: 'GET',
+        // headers: {
+        //   'Authorization': sessionToken,        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          notes = data.notes;
+          renderNotes();
+        } else {
+          console.error('Error fetching notes:', data.error);
+        }
+      } else {
+        console.error('Error fetching notes');
+      }
+    } catch (error) {
+      console.error('Error fetching notes:', error);
+    }
+  }
+
+renderNotes();
+
+const apiKeyWarningPopup = document.createElement('div');
+apiKeyWarningPopup.textContent = 'Please enter your Anthropic API key to enable AI functions.';
+apiKeyWarningPopup.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+apiKeyWarningPopup.style.color = 'white';
+apiKeyWarningPopup.style.padding = '20px';
+apiKeyWarningPopup.style.position = 'fixed';
+apiKeyWarningPopup.style.top = '50%';
+apiKeyWarningPopup.style.left = '50%';
+apiKeyWarningPopup.style.transform = 'translate(-50%, -50%)';
+apiKeyWarningPopup.style.zIndex = '9999';
+apiKeyWarningPopup.style.display = 'none';
+
+const closeWarningButton = document.createElement('button');
+closeWarningButton.textContent = 'Close';
+closeWarningButton.addEventListener('click', () => {
+  apiKeyWarningPopup.style.display = 'none';
+});
+apiKeyWarningPopup.appendChild(closeWarningButton);
+
+document.body.appendChild(apiKeyWarningPopup);
+
+// Show the warning popup when the user tries to use an AI-related feature without an API key
+function showApiKeyWarning() {
+  apiKeyWarningPopup.style.display = 'block';
 }
 
-function loadNotes() {
-  const storedNotes = localStorage.getItem('notes');
-  if (storedNotes) {
-    notes = JSON.parse(storedNotes);
+// Hide the warning popup when a valid API key is entered or the page is refreshed
+function hideApiKeyWarning() {
+  apiKeyWarningPopup.style.display = 'none';
+}
+
+const apiKeyContainer = document.getElementById('api-key-container');
+const setApiKeyButton = document.getElementById('set-api-key');
+
+const apiKeyInput = document.createElement('input');
+apiKeyInput.type = 'password';
+apiKeyInput.placeholder = 'Enter Anthropic API key';
+apiKeyInput.style.display = 'none';
+apiKeyContainer.appendChild(apiKeyInput);
+
+const saveApiKeyButton = document.createElement('button');
+saveApiKeyButton.textContent = 'Save API Key';
+saveApiKeyButton.style.display = 'none';
+saveApiKeyButton.addEventListener('click', saveApiKey);
+apiKeyContainer.appendChild(saveApiKeyButton);
+
+const updateApiKeyInput = document.createElement('input');
+updateApiKeyInput.type = 'password';
+updateApiKeyInput.placeholder = 'Enter updated Anthropic API key';
+updateApiKeyInput.style.display = 'none';
+apiKeyContainer.appendChild(updateApiKeyInput);
+
+const updateApiKeyButton = document.createElement('button');
+updateApiKeyButton.textContent = 'Update API Key';
+updateApiKeyButton.style.display = 'none';
+updateApiKeyButton.addEventListener('click', updateApiKey);
+apiKeyContainer.appendChild(updateApiKeyButton);
+
+setApiKeyButton.addEventListener('click', async () => {
+  try {
+    const response = await fetch('/api/checkApiKey');
+    if (response.ok) {
+      const { hasApiKey } = await response.json();
+      if (hasApiKey) {
+        updateApiKeyInput.style.display = 'block';
+        updateApiKeyButton.style.display = 'block';
+      } else {
+        apiKeyInput.style.display = 'block';
+        saveApiKeyButton.style.display = 'block';
+      }
+      hideApiKeyWarning();
+    } else {
+      showApiKeyWarning();
+      console.error('Error checking API key');
+    }
+  } catch (error) {
+    console.error('Error checking API key:', error);
+  }
+});
+
+async function saveApiKey() {
+  const apiKey = apiKeyInput.value.trim();
+  if (apiKey) {
+    try {
+      const response = await fetch('/api/saveApiKey', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ apiKey }),
+      });
+
+      if (response.ok) {
+        apiKeyInput.style.display = 'none';
+        saveApiKeyButton.style.display = 'none';
+        setApiKeyButton.textContent = 'Update API Key';
+        hideApiKeyWarning();
+      } else {
+        showApiKeyWarning();
+        console.error('Error saving API key');
+      }
+    } catch (error) {
+      console.error('Error saving API key:', error);
+    }
   }
 }
 
-loadNotes();
-renderNotes();
+// Check if a valid API key exists on page load and hide the warning popup if necessary
+async function checkApiKeyOnLoad() {
+  try {
+    const response = await fetch('/api/checkApiKey');
+    if (response.ok) {
+      const { hasApiKey } = await response.json();
+      if (hasApiKey) {
+        hideApiKeyWarning();
+      }
+      else {
+        showApiKeyWarning();
+      }
+    }
+  } catch (error) {
+    console.error('Error checking API key on load:', error);
+  }
+}
+
+window.addEventListener('load', checkApiKeyOnLoad);
+
+const apiKeyErrorWarning = document.createElement('div');
+apiKeyErrorWarning.textContent = 'Error: Invalid Anthropic API key. Please enter a valid API key.';
+apiKeyErrorWarning.style.color = 'red';
+apiKeyErrorWarning.style.display = 'none';
+document.body.appendChild(apiKeyErrorWarning);
+
+async function updateApiKey() {
+  const apiKey = updateApiKeyInput.value.trim();
+  if (apiKey) {
+    try {
+      const response = await fetch('/api/updateApiKey', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ apiKey }),
+      });
+
+      if (response.ok) {
+        updateApiKeyInput.style.display = 'none';
+        updateApiKeyButton.style.display = 'none';
+      } else {
+        console.error('Error updating API key');
+      }
+    } catch (error) {
+      console.error('Error updating API key:', error);
+    }
+  }
+}
 
 // Show/hide note input on hotkey press (e.g., Ctrl+Shift+N)
 document.addEventListener('keydown', (event) => {
@@ -108,6 +263,7 @@ function renderNotes() {
     const noteTagsElement = document.createElement('div');
     noteTagsElement.classList.add('note-tags');
     noteTagsElement.textContent = note.tags.join(', ');
+    noteTagsElement.innerHTML = highlightTags(note.tags, searchInput.value); // highlightTags
     noteElement.appendChild(noteTagsElement);
 
     const noteActionsElement = document.createElement('div');
@@ -157,7 +313,7 @@ function renderNotes() {
     });
 
   });
-
+  updateSummarizationInsightsButtons();
   renderSelectedNotes();
 }
 
@@ -175,26 +331,19 @@ function highlightTags(tags, searchTerm) {
   }).join(', ');
 }
 
-// Update tag select options
-function updateTagSelect() {
-  const allTags = [...new Set(notes.flatMap(note => note.tags))];
-
-  tagSelect.innerHTML = '';
-
-  allTags.forEach(tag => {
-    const option = document.createElement('option');
-    option.value = tag;
-    option.textContent = tag;
-    tagSelect.appendChild(option);
-  });
-}
-
-// Save notes to local storage
-function saveNotes() {
-  localStorage.setItem('notes', JSON.stringify(notes));
-  updateTagSelect();
-}
-
+  // Update the updateTagSelect() function
+  function updateTagSelect() {
+    const allTags = [...new Set(notes.flatMap(note => note.tags))];
+  
+    tagSelect.innerHTML = '';
+  
+    allTags.forEach(tag => {
+      const option = document.createElement('option');
+      option.value = tag;
+      option.textContent = tag;
+      tagSelect.appendChild(option);
+    });
+  }
 // Save note function
 async function saveNote() {
   const noteId = noteInput.getAttribute('data-note-id');
@@ -203,79 +352,113 @@ async function saveNote() {
 
   if (isAutoTaggingEnabled) {
     const generatedTags = await autoTagNote(text);
-    tags = [...tags, ...generatedTags];
+    if (tags.length > 1){
+      tags = [...tags, ...generatedTags];  
+    }
+    else {
+      tags = [...generatedTags];  
+    }
   }
 
   if (text !== '') {
     if (noteId) {
       // Update existing note
-      const note = notes.find(note => note.id === Number(noteId));
-      if (note) {
-        note.text = text;
-        note.tags = tags;
-      }
+      updateNote(noteId, text, tags);
     } else {
       // Add new note
-      const note = {
-        id: Date.now(),
-        text,
-        tags,
-      };
-      notes.push(note);
+      createNote(text, tags);
     }
-    saveNotes();
     noteText.value = '';
     noteTags.value = '';
+    updateTagSelect();
     renderNotes();
   }
 }
 
-// Edit note function
-function editNote(noteId) {
-  const note = notes.find(note => note.id === noteId);
-  if (note) {
-    noteText.value = note.text;
-    noteTags.value = note.tags.join(', ');
-    noteText.focus();
-
-    // Remove the existing save button event listener
-    saveNoteButton.removeEventListener('click', saveNote);
-
-    // Add a new save button event listener for updating the note
-    saveNoteButton.addEventListener('click', () => {
-      const updatedText = noteText.value.trim();
-      const updatedTags = noteTags.value.trim().split(',').map(tag => tag.trim());
-      updateNote(noteId, updatedText, updatedTags);
+// Create note function
+async function createNote(text, tags) {
+  try {
+    const sessionToken = sessionStorage.getItem('sessionToken');
+    const response = await fetch('/api/notes', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        // 'Authorization': sessionToken,
+      },
+      body: JSON.stringify({ text, tags }),
     });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success) {
+        console.log('Note created successfully');
+        fetchNotes();
+      } else {
+        console.error('Error creating note:', data.error);
+      }
+    } else {
+      console.error('Error creating note');
+    }
+  } catch (error) {
+    console.error('Error creating note:', error);
   }
 }
 
 // Update note function
-async function updateNote(noteId, updatedText, updatedTags) {
-  const note = notes.find(note => note.id === noteId);
-  if (note) {
-    note.text = updatedText;
-    note.tags = updatedTags;
-    saveNotes();
-    renderNotes();
-
-    // Remove the update note event listener
-    saveNoteButton.removeEventListener('click', () => {
-      updateNote(noteId, updatedText, updatedTags);
+async function updateNote(noteId, text, tags) {
+  try {
+    const sessionToken = sessionStorage.getItem('sessionToken');
+    const response = await fetch(`/api/notes/${noteId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        // 'Authorization': sessionToken,
+      },
+      body: JSON.stringify({ text, tags }),
     });
 
-    // Add back the original save note event listener
-    saveNoteButton.addEventListener('click', saveNote);
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success) {
+        console.log('Note updated successfully');
+        fetchNotes();
+      } else {
+        console.error('Error updating note:', data.error);
+      }
+    } else {
+      console.error('Error updating note');
+    }
+  } catch (error) {
+    console.error('Error updating note:', error);
   }
 }
 
 // Delete note function
-function deleteNote(noteId) {
-  notes = notes.filter(note => note.id !== noteId);
-  saveNotes();
-  renderNotes();
-}
+async function deleteNote(noteId) {
+  try {
+    const sessionToken = sessionStorage.getItem('sessionToken');
+    const response = await fetch(`/api/notes/${noteId}`, {
+      method: 'DELETE',
+      headers: {
+        // 'Authorization': sessionToken,
+      },
+    });
 
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success) {
+        console.log('Note deleted successfully');
+        fetchNotes();
+      } else {
+        console.error('Error deleting note:', data.error);
+      }
+    } else {
+      console.error('Error deleting note');
+    }
+  } catch (error) {
+    console.error('Error deleting note:', error);
+  }
+}
 // Event listeners
 searchInput.addEventListener('input', renderNotes);
 tagSelect.addEventListener('change', renderNotes);
@@ -287,20 +470,28 @@ autoTagSetting.addEventListener('change', () => {
   isAutoTaggingEnabled = autoTagSetting.checked;
 });
 
-async function callAnthropicAPI(apiKey, model, messages, max_tokens) {
+async function callAnthropicAPI(model, messages, max_tokens) {
   try {
-    const response = await fetch('/api/messages', {
+    const requestPayload = {
+      model,
+      messages,
+      max_tokens,
+    };
+
+    const response = await fetch('/api/anthropic', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        apiKey,
-        model,
-        messages,
-        max_tokens,
-      }),
+      body: JSON.stringify(requestPayload),
     });
+
+    if (response.status === 401) {
+      apiKeyErrorWarning.style.display = 'block';
+      updateApiKeyInput.style.display = 'block';
+      updateApiKeyButton.style.display = 'block';
+      throw new Error('Invalid Anthropic API key');
+    }
 
     if (!response.ok) {
       throw new Error(`API request failed with status ${response.status}`);
@@ -315,7 +506,7 @@ async function callAnthropicAPI(apiKey, model, messages, max_tokens) {
 }
 
 async function autoTagNote(noteText) {
-  if (!isAutoTaggingEnabled || userApiKey === '') {
+  if (!isAutoTaggingEnabled) {
     return [];
   }
 
@@ -325,11 +516,16 @@ async function autoTagNote(noteText) {
     const messages = [
       {
         role: 'user',
-        content: `Please generate relevant tags for the following note:\n\n${noteText}\n\nTags:`,
+        content: `Please generate relevant tags for the following note. Provide only a comma-separated list of tags without any additional text or formatting.
+
+        Note:
+        ${noteText}
+        
+        Tags:`,
       },
     ];
 
-    const response = await callAnthropicAPI(userApiKey, selectedModel, messages, 1024);
+    const response = await callAnthropicAPI(taggingModel, messages, 1024);
     const generatedTags = response.content[0].text.trim().split(',').map(tag => tag.trim());
     return generatedTags;
   } catch (error) {
@@ -358,51 +554,39 @@ function displayChatMessage(role, content) {
 async function sendMessage() {
   const userInput = chatInput.value.trim();
   if (userInput === '') return;
-
   chatInput.value = '';
   displayChatMessage('user', userInput);
-
-  let assistantResponse = '';
 
   try {
     showLoadingSpinner();
 
-    if (selectedNotes.length > 0) {
-      const relevantNotes = selectedNotes.filter(note =>
-        note.text.toLowerCase().includes(userInput.toLowerCase()) ||
-        note.tags.some(tag => tag.toLowerCase().includes(userInput.toLowerCase()))
-      );
+    const relevantNotes = selectedNotes.length > 0 ? selectedNotes.filter(note =>
+      note.text.toLowerCase().includes(userInput.toLowerCase()) ||
+      note.tags.some(tag => tag.toLowerCase().includes(userInput.toLowerCase()))
+    ) : [];
 
-      const relevantNotesText = relevantNotes.map(note => `Note: ${note.text}\nTags: ${note.tags.join(', ')}`).join('\n\n');
+    const relevantNotesText = relevantNotes.map(note => `Note: ${note.text}\nTags: ${note.tags.join(', ')}`).join('\n\n');
 
-      const messages = [
-        {
-          role: 'user',
-          content: `Here are some relevant notes:\n\n${relevantNotesText}\n\nQuestion: ${userInput}\n\nAnswer:`,
-        },
-      ];
+    const messages = [
+      {
+        role: 'user',
+        content: `${relevantNotes.length > 0 ? `Based on the following notes:\n\n${relevantNotesText}\n\n` : ''}Question: ${userInput}\n\nAnswer:`,
+      },
+    ];
 
-      const response = await callAnthropicAPI(userApiKey, selectedModel, messages, 1024);
-      assistantResponse = response.content[0].text.trim();
-    } else {
-      const messages = [
-        {
-          role: 'user',
-          content: userInput,
-        },
-      ];
-
-      const response = await callAnthropicAPI(userApiKey, selectedModel, messages, 1024);
-      assistantResponse = response.content[0].text.trim();
-    }
+    const assistantResponse = await getAssistantResponse(messages);
+    displayChatMessage('assistant', assistantResponse);
+    chatHistory.push({ user: userInput, assistant: assistantResponse });
   } catch (error) {
     showErrorMessage('Error sending message: ' + error.message);
   } finally {
     hideLoadingSpinner();
   }
+}
 
-  displayChatMessage('assistant', assistantResponse);
-  chatHistory.push({ user: userInput, assistant: assistantResponse });
+async function getAssistantResponse(messages) {
+  const response = await callAnthropicAPI(selectedModel, messages, 1024);
+  return response.content[0].text.trim();
 }
 
 function resetChat() {
@@ -414,36 +598,7 @@ function resetChat() {
 sendButton.addEventListener('click', sendMessage);
 resetButton.addEventListener('click', resetChat);
 
-function displayResponse(question, answer) {
-
-  const userMessage = document.createElement('div');
-  userMessage.classList.add('chat-message', 'user-message');
-  userMessage.textContent = question;
-  chatMessages.appendChild(userMessage);
-
-  const assistantMessage = document.createElement('div');
-  assistantMessage.classList.add('chat-message', 'assistant-message');
-  assistantMessage.textContent = answer;
-  chatMessages.appendChild(assistantMessage);
-
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-let userApiKey = '';
-
-const apiKeyInput = document.getElementById('api-key-input');
-const setApiKeyButton = document.getElementById('set-api-key');
-
-setApiKeyButton.addEventListener('click', () => {
-  userApiKey = apiKeyInput.value.trim();
-  apiKeyInput.value = '';
-});
-
 async function summarizeNotes() {
-  if (userApiKey === '') {
-    return 'Please enter your Anthropic API key.';
-  }
-
   if (selectedNotes.length === 0) {
     showErrorMessage('Please select notes first.');
     return;
@@ -458,11 +613,16 @@ async function summarizeNotes() {
     const messages = [
       {
         role: 'user',
-        content: `Please provide a ${summaryLength} summary of the following notes:\n\n${notesText}\n\nSummary:`,
+        content: `Please provide a ${summaryLength} summary of the following notes. Include only the summary without any additional text or formatting.
+
+        Notes:
+        ${notesText}
+        
+        Summary:`,
       },
     ];
 
-    const response = await callAnthropicAPI(userApiKey, selectedModel, messages, 1024);
+    const response = await callAnthropicAPI(selectedModel, messages, 1024);
     const summary = response.content[0].text.trim();
     const timestamp = new Date().toLocaleString();
     const result = `${summary}\nGenerated at: ${timestamp}`;
@@ -476,10 +636,6 @@ async function summarizeNotes() {
 }
 
 async function surfaceInsights() {
-  if (userApiKey === '') {
-    return 'Please enter your Anthropic API key.';
-  }
-
   if (selectedNotes.length === 0) {
     showErrorMessage('Please select notes first.');
     return;
@@ -494,11 +650,16 @@ async function surfaceInsights() {
     const messages = [
       {
         role: 'user',
-        content: `Please provide ${insightsType} based on the following notes:\n\n${notesText}\n\nInsights:`,
+        content: `Please provide ${insightsType} based on the following notes. Include only the insights without any additional text or formatting.
+
+        Notes:
+        ${notesText}
+        
+        Insights:`,
       },
     ];
 
-    const response = await callAnthropicAPI(userApiKey, selectedModel, messages, 1024);
+    const response = await callAnthropicAPI(selectedModel, messages, 1024);
     const insights = response.content[0].text.trim();
     const timestamp = new Date().toLocaleString();
     const result = `${insights}\nGenerated at: ${timestamp}`;
@@ -597,7 +758,7 @@ function renderNoteSelection(notesToRender) {
     if (selectedNotes.find(selectedNote => selectedNote.id === note.id)) {
       noteElement.classList.add('selected-note');
     }
-
+    updateSummarizationInsightsButtons();
     selectedNotesContainer.appendChild(noteElement);
     
   });
@@ -770,6 +931,7 @@ function enableNoteEdit(noteId, noteElement, noteTextElement, noteTagsElement, e
   noteElement.addEventListener('keydown', eventHandlers.keydownHandler);
 }
 
+// Update the disableNoteEdit() function
 function disableNoteEdit(noteId, noteElement, noteTextElement, noteTagsElement, editNoteButton, eventHandlers) {
   noteTextElement.removeAttribute('contenteditable');
   noteTagsElement.removeAttribute('contenteditable');
@@ -777,7 +939,6 @@ function disableNoteEdit(noteId, noteElement, noteTextElement, noteTagsElement, 
   const updatedText = noteTextElement.textContent.trim();
   const updatedTags = noteTagsElement.textContent.trim().split(',').map(tag => tag.trim());
   updateNote(noteId, updatedText, updatedTags);
-  saveNotes();
 
   editNoteButton.textContent = 'Edit';
 
@@ -815,6 +976,17 @@ toggleChatButton.addEventListener('click', () => {
 
 function toggleFlyoutPanel() {
   flyoutPanel.classList.toggle('open');
+  adjustChatTogglePosition();
+}
+
+function adjustChatTogglePosition() {
+  const chatWidget = document.getElementById('chat-widget');
+
+  if (flyoutPanel.classList.contains('open')) {
+    chatWidget.style.right = 'calc(20vw + 20px)';
+  } else {
+    chatWidget.style.right = '20px';
+  }
 }
 
 toggleFlyoutButton.addEventListener('click', toggleFlyoutPanel);
@@ -852,9 +1024,110 @@ toggleSortSearchButton.addEventListener('click', () => {
   }
 });
 
-function adjustNotesViewMargin(maxHeight) {
-  console.log(maxHeight)
-  notesView.style.marginTop = `${maxHeight + 20}px`;
+async function createUser(userId, email, name) {
+  try {
+    const response = await fetch('/api/signup', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ idToken: userId }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success) {
+        console.log('User created successfully');
+        // Store the session token in local storage or cookies
+        // sessionStorage.setItem('sessionToken', data.sessionToken);
+        // Redirect to the main app page
+        window.location.href = '/index.html';
+      } else {
+        console.error('Error creating user:', data.error);
+      }
+    } else {
+      console.error('Error creating user');
+    }
+  } catch (error) {
+    console.error('Error creating user:', error);
+  }
+}
+
+async function loginUser(userId) {
+  try {
+    const response = await fetch('/api/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ idToken: userId }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success) {
+        console.log('User logged in successfully');
+        // Store the session token in local storage or cookies
+        // sessionStorage.setItem('sessionToken', data.sessionToken);
+        // Redirect to the main app page
+        window.location.href = '/index.html';
+      } else {
+        console.error('Error logging in:', data.error);
+      }
+    } else {
+      console.error('Error logging in');
+    }
+  } catch (error) {
+    console.error('Error logging in:', error);
+  }
+}
+
+async function logoutUser() {
+  try {
+    const sessionToken = sessionStorage.getItem('sessionToken');
+    const response = await fetch('/api/logout', {
+      method: 'POST',
+      headers: {
+        'Authorization': sessionToken,
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success) {
+        console.log('User logged out successfully');
+        // Clear the session token from local storage or cookies
+        sessionStorage.removeItem('sessionToken');
+        // Redirect to the landing page or login page
+        window.location.href = '/landing.html';
+      } else {
+        console.error('Error logging out:', data.error);
+      }
+    } else {
+      console.error('Error logging out');
+    }
+  } catch (error) {
+    console.error('Error logging out:', error);
+  }
+}
+
+// const logoutButton = document.getElementById('logout-button');
+
+// logoutButton.addEventListener('click', () => {
+//   logoutUser();
+// });
+
+function updateSummarizationInsightsButtons() {
+  const summarizeNotesButton = document.getElementById('summarize-notes');
+  const surfaceInsightsButton = document.getElementById('surface-insights');
+
+  if (selectedNotes.length > 0) {
+    summarizeNotesButton.disabled = false;
+    surfaceInsightsButton.disabled = false;
+  } else {
+    summarizeNotesButton.disabled = true;
+    surfaceInsightsButton.disabled = true;
+  }
 }
 
 });

@@ -3,9 +3,23 @@
 <head>
   <title>Notes App</title>
   <link rel="stylesheet" type="text/css" href="styles.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
+<header>
+  <nav>
+    <ul>
+      <li><a href="landing.html">Home</a></li>
+      <li><a href="guide.html">How-to-Use Guide</a></li>
+      <!-- Other navigation items -->
+    </ul>
+  </nav>
+</header>
 <body>
   <div id="app">
+    <div id="loading-spinner" class="hidden">
+      <div class="spinner"></div>
+      <div class="spinner-text">Loading...</div>
+    </div>
     <div id="header-banner">
       <h1>My Notes App</h1>
     </div>
@@ -82,7 +96,6 @@
       <button id="toggle-chat">Toggle Chat</button>
       <div id="chat-window">
         <div id="api-key-container">
-          <input type="password" id="api-key-input" placeholder="Enter your Anthropic API key">
           <button id="set-api-key">Set API Key</button>
         </div>
         <div id="model-selection">
@@ -97,10 +110,6 @@
           </select>
         </div>
         <div id="chat-messages"></div>
-        <div id="loading-spinner" class="hidden">
-          <div class="spinner"></div>
-          <div class="spinner-text">Loading...</div>
-        </div>
         <div id="error-message" class="hidden"></div>
         <div id="chat-input-container">
           <input type="text" id="chat-input" placeholder="Type your message...">

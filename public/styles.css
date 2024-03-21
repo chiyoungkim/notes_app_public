@@ -354,6 +354,7 @@
     border-left: 1px solid var(--secondary-color);
     border-top: 1px solid var(--secondary-color);
     transition: right 0.3s ease-in-out;
+    overflow-y: auto;
   }
   
   #flyout-panel.open {
