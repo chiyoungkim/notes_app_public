@@ -10,10 +10,13 @@
     "build": "webpack --config webpack.config.js"
   },
   "dependencies": {
+    "bcrypt": "^5.1.1",
+    "connect-mongo": "^5.1.0",
     "cors": "^2.8.5",
     "crypto-js": "^4.2.0",
     "css-loader": "^6.10.0",
     "express": "^4.17.1",
+    "express-session": "^1.18.0",
     "google-auth-library": "^9.7.0",
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.5.0",

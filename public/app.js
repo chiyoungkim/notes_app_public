@@ -10,14 +10,22 @@ const saveNoteButton = document.getElementById('save-note');
 const searchInput = document.getElementById('search-input');
 const tagSelect = document.getElementById('tag-select');
 const notesContainer = document.getElementById('notes-container');
-const selectNotesFilter = document.getElementById('select-notes-filter');
+// const selectNotesFilter = document.getElementById('select-notes-filter');
+
+const toggleBatchEditButton = document.getElementById('toggle-batch-edit');
+const batchEditToolbox = document.getElementById('batch-edit-toolbox');
+const deleteSelectedNotesButton = document.getElementById('delete-selected-notes');
+const selectedNotesTagsInput = document.getElementById('selected-notes-tags');
+const updateSelectedNotesTagsButton = document.getElementById('update-selected-notes-tags');
+
 
 document.addEventListener('DOMContentLoaded', () => {
-  fetchNotes();
+  fetchNotes(true);
 
   // Fetch notes from the server
-  async function fetchNotes() {
+  async function fetchNotes(playAnimation = false) {
     try {
+      showLoadingSpinner();
       const sessionToken = sessionStorage.getItem('sessionToken');
       const response = await fetch('/api/notes', {
         method: 'GET',
@@ -29,7 +37,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await response.json();
         if (data.success) {
           notes = data.notes;
-          renderNotes();
+          renderNotes(playAnimation);
+          updateTagSelect();
         } else {
           console.error('Error fetching notes:', data.error);
         }
@@ -38,10 +47,12 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } catch (error) {
       console.error('Error fetching notes:', error);
+    } finally {
+      hideLoadingSpinner();
     }
   }
 
-renderNotes();
+// renderNotes(true);
 
 const apiKeyWarningPopup = document.createElement('div');
 apiKeyWarningPopup.textContent = 'Please enter your Anthropic API key to enable AI functions.';
@@ -81,6 +92,7 @@ const apiKeyInput = document.createElement('input');
 apiKeyInput.type = 'password';
 apiKeyInput.placeholder = 'Enter Anthropic API key';
 apiKeyInput.style.display = 'none';
+apiKeyInput.style.margin = '0px 10px';
 apiKeyContainer.appendChild(apiKeyInput);
 
 const saveApiKeyButton = document.createElement('button');
@@ -107,11 +119,26 @@ setApiKeyButton.addEventListener('click', async () => {
     if (response.ok) {
       const { hasApiKey } = await response.json();
       if (hasApiKey) {
-        updateApiKeyInput.style.display = 'block';
-        updateApiKeyButton.style.display = 'block';
+        if (updateApiKeyInput.style.display == 'block') {
+          updateApiKeyInput.style.display = 'none';
+          updateApiKeyButton.style.display = 'none';
+        } else {
+          updateApiKeyInput.style.display = 'block';
+          updateApiKeyButton.style.display = 'block';
+        }
       } else {
-        apiKeyInput.style.display = 'block';
-        saveApiKeyButton.style.display = 'block';
+        if (apiKeyInput.style.display == 'block') {
+          apiKeyInput.style.display = 'none';
+          saveApiKeyButton.style.display = 'none';
+        } else {
+          apiKeyInput.style.display = 'block';
+          saveApiKeyButton.style.display = 'block';
+        }
+      }
+      if (setApiKeyButton.textContent == 'Update API Key') {
+        setApiKeyButton.textContent = 'Return';
+      } else {
+        setApiKeyButton.textContent = 'Update API Key';
       }
       hideApiKeyWarning();
     } else {
@@ -157,9 +184,9 @@ async function checkApiKeyOnLoad() {
     if (response.ok) {
       const { hasApiKey } = await response.json();
       if (hasApiKey) {
+        setApiKeyButton.textContent = 'Update API Key';
         hideApiKeyWarning();
-      }
-      else {
+      } else {
         showApiKeyWarning();
       }
     }
@@ -202,9 +229,35 @@ async function updateApiKey() {
 
 // Show/hide note input on hotkey press (e.g., Ctrl+Shift+N)
 document.addEventListener('keydown', (event) => {
-  if (event.ctrlKey && event.shiftKey && event.key === 'N') {
-    noteInput.classList.toggle('hidden');
-    noteText.focus();
+  if (event.ctrlKey || event.metaKey) {
+    switch (event.key) {
+      case 'n':
+        event.preventDefault();
+        if (document.activeElement === noteText) {
+          saveNote();
+        } else {
+          addNoteToolbox.classList.toggle('open');
+          adjustNotesViewHeight();
+          noteText.focus(); // Add this line to focus on the text input
+        }
+        break;
+      case 'f':
+        event.preventDefault();
+        searchSortToolbox.classList.toggle('open');
+        adjustNotesViewHeight();
+        break;
+      case 's':
+        event.preventDefault();
+        selectNotesToolbox.classList.toggle('open');
+        adjustNotesViewHeight();
+        break;
+      case 'b':
+        event.preventDefault();
+        batchEditToolbox.classList.toggle('open');
+        adjustNotesViewHeight();
+        break;
+      // ... other hotkey cases ...
+    }
   }
 });
 
@@ -216,13 +269,8 @@ function filterNotes() {
   const searchTerm = searchInput.value.toLowerCase();
   const selectedTags = Array.from(tagSelect.selectedOptions).map(option => option.value);
 
-  // If no search term and no tags selected, return all notes
-  if (searchTerm === '' && selectedTags.length === 0) {
-    return notes;
-  }
-
   const filteredNotes = notes.filter(note =>
-    (note.text.toLowerCase().includes(searchTerm) || note.tags.some(tag => tag.toLowerCase().includes(searchTerm))) &&
+    note.text.toLowerCase().includes(searchTerm) &&
     (selectedTags.length === 0 || selectedTags.every(tag => note.tags.includes(tag)))
   );
 
@@ -230,28 +278,55 @@ function filterNotes() {
 }
 
 // Render notes in the UI
-function renderNotes() {
+function renderNotes(playAnimation = false) {
   const filteredNotes = filterNotes();
+  const prioritizeSelectedNotes = document.getElementById('prioritize-selected-notes').checked;
+  const selectedNotesArray = filteredNotes.filter(note => selectedNotes.includes(note));
+  const deselectedNotesArray = filteredNotes.filter(note => !selectedNotes.includes(note));
+  const sortedNotes = prioritizeSelectedNotes ? [...selectedNotesArray, ...deselectedNotesArray] : filteredNotes;
 
   notesContainer.innerHTML = '';
-  filteredNotes.forEach(note => {
+
+    sortedNotes.forEach(note => {
     const noteElement = document.createElement('div');
     noteElement.classList.add('note');
 
-    noteElement.addEventListener('click', () => {
-      selectNoteCheckbox.checked = !selectNoteCheckbox.checked;
-      if (selectNoteCheckbox.checked) {
-        selectedNotes.push(note);
-      } else {
-        selectedNotes = selectedNotes.filter(selectedNote => selectedNote.id !== note.id);
+    noteElement.style.opacity = 0;
+    noteElement.style.transform = 'translateY(20px)';
+
+    noteElement.addEventListener('click', (event) => {
+      if (!noteElement.classList.contains('editing')) {
+        event.stopPropagation();
+        const wasSelected = selectedNotes.find(selectedNote => selectedNote.id === note.id);
+        if (wasSelected) {
+          selectedNotes = selectedNotes.filter(selectedNote => selectedNote.id !== note.id);
+          noteElement.classList.remove('selected');
+        } else {
+          selectedNotes.push(note);
+          noteElement.classList.add('selected');
+        }
+
+        if (prioritizeSelectedNotes) {
+          const noteIndex = Array.from(notesContainer.children).indexOf(noteElement);
+          notesContainer.removeChild(noteElement);
+          if (wasSelected) {
+            const lastSelectedNoteIndex = Array.from(notesContainer.children).findIndex(
+              child => !selectedNotes.includes(child.note)
+            );
+            notesContainer.insertBefore(noteElement, notesContainer.children[lastSelectedNoteIndex]);
+          } else {
+            notesContainer.insertBefore(noteElement, notesContainer.firstChild);
+          }
+        }
+
+        renderNotes();
       }
-      renderSelectedNotes();
     });
 
     if (selectedNotes.find(selectedNote => selectedNote.id === note.id)) {
-      noteElement.classList.add('selected-note');
+      noteElement.classList.add('selected');
     } else {
-      noteElement.classList.remove('selected-note');
+      noteElement.classList.remove('selected');
     }
 
     const noteTextElement = document.createElement('div');
@@ -270,51 +345,36 @@ function renderNotes() {
     noteActionsElement.classList.add('note-actions');
 
     const editNoteButton = document.createElement('button');
-    editNoteButton.classList.add('edit-note');
     editNoteButton.textContent = 'Edit';
-    editNoteButton.addEventListener('click', () => {
+    editNoteButton.addEventListener('click', (event) => {
+      event.stopPropagation();
       enableNoteEdit(note.id, noteElement, noteTextElement, noteTagsElement, editNoteButton);
     });
     noteActionsElement.appendChild(editNoteButton);
 
     const deleteNoteButton = document.createElement('button');
     deleteNoteButton.textContent = 'Delete';
-    deleteNoteButton.addEventListener('click', () => {
+    deleteNoteButton.addEventListener('click', (event) => {
+      event.stopPropagation();
       deleteNote(note.id);
     });
     noteActionsElement.appendChild(deleteNoteButton);
-
-    const selectNoteCheckbox = document.createElement('input');
-    selectNoteCheckbox.type = 'checkbox';
-    selectNoteCheckbox.addEventListener('change', () => {
-      if (selectNoteCheckbox.checked) {
-        selectedNotes.push(note);
-      } else {
-        selectedNotes = selectedNotes.filter(selectedNote => selectedNote.id !== note.id);
-      }
-      renderSelectedNotes();
-    });
-    noteElement.appendChild(selectNoteCheckbox);
     
     noteElement.appendChild(noteActionsElement);
 
     notesContainer.appendChild(noteElement);
-
-    // Update tag filter dropdown
-    selectNotesFilter.innerHTML = '';
-
-    const allTags = [...new Set(notes.flatMap(note => note.tags))];
-
-    allTags.forEach(tag => {
-      const optionElement = document.createElement('option');
-      optionElement.value = tag;
-      optionElement.textContent = tag;
-      selectNotesFilter.appendChild(optionElement);
-    });
-
+    if (playAnimation) {
+      setTimeout(() => {
+        noteElement.classList.add('show');
+      }, 100);
+    } else {
+      noteElement.classList.add('show');
+    }
   });
+
   updateSummarizationInsightsButtons();
-  renderSelectedNotes();
+  // renderSelectedNotes();
+  updateSelectedNotesCount();
 }
 
 // Highlight search term in text
@@ -322,6 +382,12 @@ function highlightText(text, searchTerm) {
   const regex = new RegExp(searchTerm, 'gi');
   return text.replace(regex, '<span class="highlight">$&</span>');
 }
+
+const prioritizeSelectedNotesCheckbox = document.getElementById('prioritize-selected-notes');
+
+prioritizeSelectedNotesCheckbox.addEventListener('change', () => {
+  renderNotes();
+});
 
 // Highlight search term in tags
 function highlightTags(tags, searchTerm) {
@@ -350,6 +416,9 @@ async function saveNote() {
   const text = noteText.value.trim();
   let tags = noteTags.value.trim().split(',').map(tag => tag.trim());
 
+  const noteElement = document.querySelector(`.note[data-note-id="${noteId}"]`);
+  const isSelected = noteElement.classList.contains('selected');
+
   if (isAutoTaggingEnabled) {
     const generatedTags = await autoTagNote(text);
     if (tags.length > 1){
@@ -358,6 +427,16 @@ async function saveNote() {
     else {
       tags = [...generatedTags];  
     }
+  }
+
+  if (isSelected) {
+    noteElement.classList.add('selected');
+    if (!selectedNotes.includes(note)) {
+      selectedNotes.push(note);
+    }
+  } else {
+    noteElement.classList.remove('selected');
+    selectedNotes = selectedNotes.filter(selectedNote => selectedNote.id !== note.id);
   }
 
   if (text !== '') {
@@ -385,7 +464,12 @@ async function createNote(text, tags) {
         'Content-Type': 'application/json',
         // 'Authorization': sessionToken,
       },
-      body: JSON.stringify({ text, tags }),
+      body: JSON.stringify({
+        text,
+        tags,
+        createdAt: new Date().toISOString(),
+        lastEdited: new Date().toISOString(),
+      }),
     });
 
     if (response.ok) {
@@ -393,6 +477,7 @@ async function createNote(text, tags) {
       if (data.success) {
         console.log('Note created successfully');
         fetchNotes();
+        updateTagSelect();
       } else {
         console.error('Error creating note:', data.error);
       }
@@ -414,7 +499,11 @@ async function updateNote(noteId, text, tags) {
         'Content-Type': 'application/json',
         // 'Authorization': sessionToken,
       },
-      body: JSON.stringify({ text, tags }),
+      body: JSON.stringify({
+        text,
+        tags,
+        lastEdited: new Date().toISOString(),
+      }),
     });
 
     if (response.ok) {
@@ -422,6 +511,7 @@ async function updateNote(noteId, text, tags) {
       if (data.success) {
         console.log('Note updated successfully');
         fetchNotes();
+        updateTagSelect();
       } else {
         console.error('Error updating note:', data.error);
       }
@@ -435,33 +525,35 @@ async function updateNote(noteId, text, tags) {
 
 // Delete note function
 async function deleteNote(noteId) {
-  try {
-    const sessionToken = sessionStorage.getItem('sessionToken');
-    const response = await fetch(`/api/notes/${noteId}`, {
-      method: 'DELETE',
-      headers: {
-        // 'Authorization': sessionToken,
-      },
-    });
+  if (confirm('Are you sure you want to delete this note?')) {
+    try {
+      const sessionToken = sessionStorage.getItem('sessionToken');
+      const response = await fetch(`/api/notes/${noteId}`, {
+        method: 'DELETE',
+        headers: {
+          // 'Authorization': sessionToken,
+        },
+      });
 
-    if (response.ok) {
-      const data = await response.json();
-      if (data.success) {
-        console.log('Note deleted successfully');
-        fetchNotes();
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          console.log('Note deleted successfully');
+          fetchNotes();
+          updateTagSelect();
+        } else {
+          console.error('Error deleting note:', data.error);
+        }
       } else {
-        console.error('Error deleting note:', data.error);
+        console.error('Error deleting note');
       }
-    } else {
-      console.error('Error deleting note');
+    } catch (error) {
+      console.error('Error deleting note:', error);
     }
-  } catch (error) {
-    console.error('Error deleting note:', error);
   }
 }
 // Event listeners
 searchInput.addEventListener('input', renderNotes);
-tagSelect.addEventListener('change', renderNotes);
 
 const autoTagSetting = document.getElementById('auto-tag-setting');
 let isAutoTaggingEnabled = false;
@@ -560,17 +652,12 @@ async function sendMessage() {
   try {
     showLoadingSpinner();
 
-    const relevantNotes = selectedNotes.length > 0 ? selectedNotes.filter(note =>
-      note.text.toLowerCase().includes(userInput.toLowerCase()) ||
-      note.tags.some(tag => tag.toLowerCase().includes(userInput.toLowerCase()))
-    ) : [];
-
-    const relevantNotesText = relevantNotes.map(note => `Note: ${note.text}\nTags: ${note.tags.join(', ')}`).join('\n\n');
+    const relevantNotesText = selectedNotes.map(note => `Note: ${note.text}\nTags: ${note.tags.join(', ')}`).join('\n\n');
 
     const messages = [
       {
         role: 'user',
-        content: `${relevantNotes.length > 0 ? `Based on the following notes:\n\n${relevantNotesText}\n\n` : ''}Question: ${userInput}\n\nAnswer:`,
+        content: `${selectedNotes.length > 0 ? `Based on the following notes:\n\n${relevantNotesText}\n\n` : ''}Question: ${userInput}\n\nAnswer:`,
       },
     ];
 
@@ -594,6 +681,13 @@ function resetChat() {
   chatHistory = [];
   chatInput.value = '';
 }
+
+chatInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    sendMessage();
+  }
+});
 
 sendButton.addEventListener('click', sendMessage);
 resetButton.addEventListener('click', resetChat);
@@ -706,18 +800,10 @@ function renderSelectedNotes() {
 }
 
 const selectAllNotesButton = document.getElementById('select-all-notes');
-const clearSelectedNotesButton = document.getElementById('clear-selected-notes');
 
 selectAllNotesButton.addEventListener('click', () => {
   if (confirm('Are you sure you want to select all notes?')) {
     selectedNotes = [...notes];
-    renderNotes();
-  }
-});
-
-clearSelectedNotesButton.addEventListener('click', () => {
-  if (confirm('Are you sure you want to clear the selected notes?')) {
-    selectedNotes = [];
     renderNotes();
   }
 });
@@ -728,44 +814,54 @@ modelSelect.addEventListener('change', () => {
   selectedModel = modelSelect.value;
 });
 
-const selectNotesSearch = document.getElementById('select-notes-search');
+// const selectNotesSearch = document.getElementById('select-notes-search');
 
-selectNotesSearch.addEventListener('input', () => {
-  const searchTerm = selectNotesSearch.value.toLowerCase();
-  const filteredNotes = notes.filter(note =>
-    note.text.toLowerCase().includes(searchTerm) ||
-    note.tags.some(tag => tag.toLowerCase().includes(searchTerm))
-  );
-  renderNoteSelection(filteredNotes);
+// selectNotesSearch.addEventListener('input', () => {
+//   const searchTerm = selectNotesSearch.value.toLowerCase();
+//   const filteredNotes = notes.filter(note =>
+//     note.text.toLowerCase().includes(searchTerm) ||
+//     note.tags.some(tag => tag.toLowerCase().includes(searchTerm))
+//   );
+//   renderNoteSelection(filteredNotes);
+// });
+
+// function renderNoteSelection(notesToRender = notes) {
+//   const selectedNotesContainer = document.getElementById('selected-notes');
+//   selectedNotesContainer.innerHTML = '';
+
+//   notesToRender.forEach(note => {
+//     const noteElement = document.createElement('div');
+//     noteElement.textContent = note.text;
+//     noteElement.addEventListener('click', () => {
+//       if (selectedNotes.find(selectedNote => selectedNote.id === note.id)) {
+//         selectedNotes = selectedNotes.filter(selectedNote => selectedNote.id !== note.id);
+//       } else {
+//         selectedNotes.push(note);
+//       }
+//       renderNoteSelection(notesToRender);
+//     });
+
+//     if (selectedNotes.find(selectedNote => selectedNote.id === note.id)) {
+//       noteElement.classList.add('selected-note');
+//     } else {
+//       noteElement.classList.remove('selected-note');
+//     }
+//     updateSummarizationInsightsButtons();
+//     selectedNotesContainer.appendChild(noteElement);
+//   });
+
+//   const selectedNotesCount = document.createElement('div');
+//   selectedNotesCount.textContent = `Selected: ${selectedNotes.length} / ${notesToRender.length}`;
+//   selectedNotesContainer.appendChild(selectedNotesCount);
+// }
+
+const deselectAllTagsButton = document.getElementById('deselect-all-tags');
+
+deselectAllTagsButton.addEventListener('click', () => {
+  tagSelect.selectedIndex = -1;
+  renderNotes();
 });
 
-function renderNoteSelection(notesToRender) {
-  const selectedNotesContainer = document.getElementById('selected-notes');
-  selectedNotesContainer.innerHTML = '';
-
-  notesToRender.forEach(note => {
-    const noteElement = document.createElement('div');
-    noteElement.textContent = note.text;
-    noteElement.addEventListener('click', () => {
-      if (selectedNotes.find(selectedNote => selectedNote.id === note.id)) {
-        selectedNotes = selectedNotes.filter(selectedNote => selectedNote.id !== note.id);
-      } else {
-        selectedNotes.push(note);
-      }
-      renderNoteSelection(notesToRender);
-    });
-
-    if (selectedNotes.find(selectedNote => selectedNote.id === note.id)) {
-      noteElement.classList.add('selected-note');
-    }
-    updateSummarizationInsightsButtons();
-    selectedNotesContainer.appendChild(noteElement);
-    
-  });
-  const selectedNotesCount = document.createElement('div');
-  selectedNotesCount.textContent = `Selected: ${selectedNotes.length} / ${notesToRender.length}`;
-  selectedNotesContainer.appendChild(selectedNotesCount);
-}
 
 function filterNotesByTags(notesToFilter, selectedTags) {
   if (selectedTags.length === 0) {
@@ -777,16 +873,16 @@ function filterNotesByTags(notesToFilter, selectedTags) {
   );
 }
 
-selectNotesFilter.addEventListener('change', () => {
-  const selectedTags = Array.from(selectNotesFilter.selectedOptions).map(option => option.value);
-  const searchTerm = selectNotesSearch.value.toLowerCase();
-  const filteredNotes = notes.filter(note =>
-    (searchTerm === '' || note.text.toLowerCase().includes(searchTerm) ||
-      note.tags.some(tag => tag.toLowerCase().includes(searchTerm))) &&
-    filterNotesByTags([note], selectedTags).length > 0
-  );
-  renderNoteSelection(filteredNotes);
-});
+// selectNotesFilter.addEventListener('change', () => {
+//   const selectedTags = Array.from(selectNotesFilter.selectedOptions).map(option => option.value);
+//   const searchTerm = selectNotesSearch.value.toLowerCase();
+//   const filteredNotes = notes.filter(note =>
+//     (searchTerm === '' || note.text.toLowerCase().includes(searchTerm) ||
+//       note.tags.some(tag => tag.toLowerCase().includes(searchTerm))) &&
+//     (selectedTags.length === 0 || selectedTags.every(tag => note.tags.includes(tag)))
+//   );
+//   renderNoteSelection(filteredNotes);
+// });
 
 function showLoadingSpinner() {
   const loadingSpinner = document.getElementById('loading-spinner');
@@ -881,16 +977,19 @@ exportInsightsButton.addEventListener('click', () => {
 function sortNotes(criteria) {
   switch (criteria) {
     case 'date-desc':
-      notes.sort((a, b) => b.id - a.id);
+      notes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       break;
     case 'date-asc':
-      notes.sort((a, b) => a.id - b.id);
+      notes.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
       break;
     case 'title-asc':
       notes.sort((a, b) => a.text.localeCompare(b.text));
       break;
     case 'title-desc':
       notes.sort((a, b) => b.text.localeCompare(a.text));
+      break;
+    case 'last-edited':
+      notes.sort((a, b) => new Date(b.lastEdited) - new Date(a.lastEdited));
       break;
     default:
       break;
@@ -904,6 +1003,7 @@ const sortSelect = document.getElementById('sort-select');
 sortSelect.addEventListener('change', () => {
   const selectedCriteria = sortSelect.value;
   sortNotes(selectedCriteria);
+  renderNotes();
 });
 
 function enableNoteEdit(noteId, noteElement, noteTextElement, noteTagsElement, editNoteButton) {
@@ -915,8 +1015,9 @@ function enableNoteEdit(noteId, noteElement, noteTextElement, noteTagsElement, e
 
   const eventHandlers = {
     clickOutsideHandler: (event) => {
-      if (!noteElement.contains(event.target)) {
+      if (!noteElement.contains(event.target) && event.target !== editNoteButton) {
         disableNoteEdit(noteId, noteElement, noteTextElement, noteTagsElement, editNoteButton, eventHandlers);
+        renderNotes();
       }
     },
     keydownHandler: (event) => {
@@ -924,11 +1025,18 @@ function enableNoteEdit(noteId, noteElement, noteTextElement, noteTagsElement, e
         event.preventDefault();
         disableNoteEdit(noteId, noteElement, noteTextElement, noteTagsElement, editNoteButton, eventHandlers);
       }
+    },
+    saveButtonHandler: () => {
+      disableNoteEdit(noteId, noteElement, noteTextElement, noteTagsElement, editNoteButton, eventHandlers);
     }
   };
 
-  noteElement.addEventListener('click', eventHandlers.clickOutsideHandler);
+  noteElement.classList.add('editing');
+  noteElement.classList.remove('selected');
+
+  document.addEventListener('click', eventHandlers.clickOutsideHandler);
   noteElement.addEventListener('keydown', eventHandlers.keydownHandler);
+  editNoteButton.addEventListener('click', eventHandlers.saveButtonHandler);
 }
 
 // Update the disableNoteEdit() function
@@ -942,8 +1050,11 @@ function disableNoteEdit(noteId, noteElement, noteTextElement, noteTagsElement, 
 
   editNoteButton.textContent = 'Edit';
 
-  noteElement.removeEventListener('click', eventHandlers.clickOutsideHandler);
+  noteElement.classList.remove('editing');
+
+  document.removeEventListener('click', eventHandlers.clickOutsideHandler);
   noteElement.removeEventListener('keydown', eventHandlers.keydownHandler);
+  editNoteButton.removeEventListener('click', eventHandlers.saveButtonHandler);
 }
 
 function toggleDarkMode() {
@@ -976,53 +1087,70 @@ toggleChatButton.addEventListener('click', () => {
 
 function toggleFlyoutPanel() {
   flyoutPanel.classList.toggle('open');
-  adjustChatTogglePosition();
+  adjustAppPositions();
 }
 
-function adjustChatTogglePosition() {
+function adjustAppPositions() {
   const chatWidget = document.getElementById('chat-widget');
+  const chatToggle = document.getElementById('toggle-chat');
+  const toolbar = document.querySelectorAll('footer')[0];
+  const notesView = document.getElementById('notes-view');
+  const toolboxes = document.querySelectorAll('.toolbox');
 
   if (flyoutPanel.classList.contains('open')) {
-    chatWidget.style.right = 'calc(20vw + 20px)';
+    chatWidget.style.right = 'calc(30vw + 60px)';
+    chatToggle.style.transform = 'TranslateX(calc(-30vw - 40px))';
+    toolboxes.forEach(toolbox => {
+      toolbox.style.width = 'calc(70vw - 81px)';
+      toolbox.style.borderRight = '1px solid var(--secondary-color)';
+    });
+    notesView.style.width = `calc(70vw - 80px)`;
+    toolbar.style.width = `calc(70vw - 80px)`;
   } else {
     chatWidget.style.right = '20px';
+    chatToggle.style.transform = 'TranslateX(0)';
+    toolboxes.forEach(toolbox => {
+      toolbox.style.width = '';
+      toolbox.style.borderRight = '';
+    });
+    notesView.style.width = ``;
+    toolbar.style.width = ``;
   }
 }
 
 toggleFlyoutButton.addEventListener('click', toggleFlyoutPanel);
 
-const toggleSortSearchButton = document.getElementById('toggle-sort-search');
-const sortSearchContainer = document.getElementById('sort-search-container');
-const sortingOptions = document.getElementById('sorting-options');
-const searchContainer = document.getElementById('search-container');
-const notesView = document.getElementById('notes-view');
+// const toggleSortSearchButton = document.getElementById('toggle-sort-search');
+// const sortSearchContainer = document.getElementById('sort-search-container');
+// const sortingOptions = document.getElementById('sorting-options');
+// const searchContainer = document.getElementById('search-container');
 
-sortSearchContainer.classList.toggle('hidden');
-sortingOptions.classList.toggle('hidden')
-searchContainer.classList.toggle('hidden')
-searchInput.classList.toggle('hidden')
-tagSelect.classList.toggle('hidden')
-sortSearchContainer.style.maxHeight = '0';
-sortSearchContainer.style.margin = '0';
-sortSearchContainer.style.padding = '0';
+// sortSearchContainer.classList.toggle('hidden');
+// sortingOptions.classList.toggle('hidden')
+// searchContainer.classList.toggle('hidden')
+// searchInput.classList.toggle('hidden')
+// tagSelect.classList.toggle('hidden')
+// sortSearchContainer.style.maxHeight = '0';
+// sortSearchContainer.style.margin = '0';
+// sortSearchContainer.style.padding = '0';
 
-toggleSortSearchButton.addEventListener('click', () => {
-  sortSearchContainer.classList.toggle('hidden');
-  sortingOptions.classList.toggle('hidden')
-  searchContainer.classList.toggle('hidden')
-  searchInput.classList.toggle('hidden')
-  tagSelect.classList.toggle('hidden')
+// toggleSortSearchButton.addEventListener('click', () => {
+//   sortSearchContainer.classList.toggle('hidden');
+//   sortingOptions.classList.toggle('hidden')
+//   searchContainer.classList.toggle('hidden')
+//   searchInput.classList.toggle('hidden')
+//   tagSelect.classList.toggle('hidden')
 
-  if (sortSearchContainer.classList.contains('hidden')) {
-    sortSearchContainer.style.maxHeight = '0';
-    sortSearchContainer.style.margin = '0';
-    sortSearchContainer.style.padding = '0';
-  } else {
-    sortSearchContainer.style.maxHeight = `${sortSearchContainer.scrollHeight}px`;
-    sortSearchContainer.style.margin = '20px';
-    sortSearchContainer.style.padding = '20px';
-  }
-});
+//   if (sortSearchContainer.classList.contains('hidden')) {
+//     sortSearchContainer.style.maxHeight = '0';
+//     sortSearchContainer.style.margin = '0';
+//     sortSearchContainer.style.padding = '0';
+//   } else {
+//     sortSearchContainer.style.maxHeight = `${sortSearchContainer.scrollHeight}px`;
+//     sortSearchContainer.style.margin = '20px';
+//     sortSearchContainer.style.padding = '20px';
+//   }
+// });
 
 async function createUser(userId, email, name) {
   try {
@@ -1129,5 +1257,187 @@ function updateSummarizationInsightsButtons() {
     surfaceInsightsButton.disabled = true;
   }
 }
+
+const toolboxTabs = document.querySelectorAll('.toolbox-tab');
+const toolboxTabContents = document.querySelectorAll('.toolbox-tab-content');
+
+toolboxTabs.forEach(tab => {
+  tab.addEventListener('click', () => {
+    const tabId = tab.getAttribute('data-tab');
+    toolboxTabs.forEach(tab => tab.classList.remove('active'));
+    toolboxTabContents.forEach(content => content.classList.add('hidden'));
+    tab.classList.add('active');
+    document.getElementById(tabId + '-tab').classList.remove('hidden');
+  });
+});
+
+// toggleSortSearchButton.addEventListener('click', () => {
+//   sortSearchContainer.classList.toggle('hidden');
+//   sortingOptions.classList.toggle('hidden')
+//   searchContainer.classList.toggle('hidden')
+//   searchInput.classList.toggle('hidden')
+//   tagSelect.classList.toggle('hidden')
+
+// const toggleToolboxButton = document.getElementById('toggle-toolbox');
+const toolbox = document.getElementById('toolbox');
+
+// toggleToolboxButton.addEventListener('click', () => {
+//   toolbox.classList.toggle('open');
+//   toggleToolboxButton.classList.toggle('open');
+//   app.style.height = toolbox.classList.contains('open') ? 'calc(100vh - 20vh)' : 'calc(100vh)';
+// });
+
+const deselectAllNotesButton = document.getElementById('deselect-all-notes');
+
+deselectAllNotesButton.addEventListener('click', () => {
+  selectedNotes = [];
+  renderNotes();
+});
+
+// const selectAllTagsButton = document.getElementById('select-all-tags');
+
+// selectAllTagsButton.addEventListener('click', () => {
+//   const allTags = [...new Set(notes.flatMap(note => note.tags))];
+//   allTags.forEach(tag => {
+//     const option = document.createElement('option');
+//     option.value = tag;
+//     option.textContent = tag;
+//     option.selected = true;
+//     tagSelect.appendChild(option);
+//   });
+//   renderNotes();
+// });
+
+tagSelect.addEventListener('change', () => {
+  const selectedOptions = Array.from(tagSelect.selectedOptions);
+  if (selectedOptions.length === 1) {
+    const selectedTag = selectedOptions[0].value;
+    if (tagSelect.value !== selectedTag) {
+      tagSelect.selectedIndex = -1;
+    }
+  }
+  renderNotes();
+});
+
+function updateSelectedNotesCount() {
+  if (selectedNotes.length > 1) {
+    toggleBatchEditButton.classList.remove('hidden');
+  } else {
+    toggleBatchEditButton.classList.add('hidden');
+    batchEditToolbox.classList.remove('open');
+    toggleBatchEditButton.classList.remove('open');
+  }
+}
+
+deleteSelectedNotesButton.addEventListener('click', () => {
+  if (selectedNotes.length > 0) {
+    if (confirm('Are you sure you want to delete the selected notes?')) {
+      selectedNotes.forEach(note => deleteNote(note.id));
+      selectedNotes = [];
+      renderNotes();
+    }
+  }
+});
+
+updateSelectedNotesTagsButton.addEventListener('click', () => {
+  if (selectedNotes.length > 0) {
+    const newTags = selectedNotesTagsInput.value.trim().split(',').map(tag => tag.trim()).filter(tag => tag !== '');
+    selectedNotes.forEach(note => {
+      if (note.tags == '') {
+        updateNoteTags(note.id, newTags);
+      } else {
+        updateNoteTags(note.id, note.tags.concat(newTags));
+      }
+    });
+    selectedNotesTagsInput.value = '';
+    renderNotes();
+  }
+});
+
+function updateNoteTags(noteId, tags) {
+  const note = notes.find(note => note.id === noteId);
+  if (note) {
+    const uniqueTags = [...new Set(tags)];
+    note.tags = uniqueTags;
+    updateNote(noteId, note.text, uniqueTags);
+  }
+}
+
+const addNoteToolbox = document.getElementById('add-note-toolbox');
+const searchSortToolbox = document.getElementById('search-sort-toolbox');
+const selectNotesToolbox = document.getElementById('select-notes-toolbox');
+const batchEditToolbox = document.getElementById('batch-edit-toolbox');
+
+function adjustNotesViewHeight() {
+  const notesView = document.getElementById('notes-view');
+  const toolboxes = document.querySelectorAll('.toolbox');
+  let toolboxHeight = 0;
+
+  toolboxes.forEach(toolbox => {
+    if (toolbox.classList.contains('open')) {
+      toolboxHeight += toolbox.offsetHeight;
+    }
+  });
+
+  notesView.style.height = `calc(100vh - ${140 + toolboxHeight}px)`;
+}
+
+function closeAllToolboxes() {
+  const toolboxes = document.querySelectorAll('.toolbox');
+  toolboxes.forEach(toolbox => {
+    toolbox.classList.remove('open');
+    toolbox.style.display = '';
+  });
+}
+
+document.getElementById('toggle-add-note').addEventListener('click', () => {
+  if (addNoteToolbox.classList.contains('open')) {
+    addNoteToolbox.classList.remove('open');
+    addNoteToolbox.style.display = '';
+  } else {
+    closeAllToolboxes();
+    addNoteToolbox.classList.add('open');
+    addNoteToolbox.style.display = 'flex';
+    noteText.focus(); // Add this line to focus on the text input
+  }
+  adjustNotesViewHeight();
+});
+
+document.getElementById('toggle-search-sort').addEventListener('click', () => {
+  if (searchSortToolbox.classList.contains('open')) {
+    searchSortToolbox.classList.remove('open');
+  } else {
+    closeAllToolboxes();
+    searchSortToolbox.classList.toggle('open');
+  }
+  adjustNotesViewHeight();
+});
+
+document.getElementById('toggle-select-notes').addEventListener('click', () => {
+  if (selectNotesToolbox.classList.contains('open')) {
+    selectNotesToolbox.classList.remove('open');
+  } else {
+    closeAllToolboxes();
+    selectNotesToolbox.classList.toggle('open');
+  }
+  adjustNotesViewHeight();
+});
+
+document.getElementById('toggle-batch-edit').addEventListener('click', () => {
+  if (batchEditToolbox.classList.contains('open')) {
+    batchEditToolbox.classList.remove('open');
+  } else {
+    closeAllToolboxes();
+    batchEditToolbox.classList.toggle('open');
+  }
+  adjustNotesViewHeight();
+});
+
+noteText.addEventListener('keydown', (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+    event.preventDefault();
+    saveNote();
+  }
+});
 
 });

@@ -3,7 +3,7 @@ const cors = require('cors');
 const fetch = require('node-fetch');
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
-const { MongoClient } = require('mongodb');
+const { MongoClient, ObjectId } = require('mongodb');
 
 const CryptoJS = require('crypto-js');
 const ENCRYPTION_KEY = 'your-encryption-key'; // Replace with your own encryption key
@@ -177,12 +177,17 @@ app.post('/api/notes', /* verifySessionToken, */ async (req, res) => {
   });
   
   // Get all notes for a user
-  app.get('/api/notes', /* verifySessionToken, */  async (req, res) => {
+  app.get('/api/notes', /* verifySessionToken, */ async (req, res) => {
     const userId = req.userId;
   
     try {
       const notes = await notesCollection.find({ userId }).toArray();
-      res.json({ success: true, notes });
+      const notesWithIds = notes.map(note => ({
+        id: note._id.toString(),
+        text: note.text,
+        tags: note.tags,
+      }));
+      res.json({ success: true, notes: notesWithIds });
     } catch (error) {
       console.error('Error retrieving notes:', error);
       res.status(500).json({ success: false, error: 'An error occurred while retrieving notes' });
@@ -216,7 +221,6 @@ app.post('/api/notes', /* verifySessionToken, */ async (req, res) => {
   app.delete('/api/notes/:noteId', /* verifySessionToken, */  async (req, res) => {
     const { noteId } = req.params;
     // const userId = req.userId;
-  
     try {
       const result = await notesCollection.deleteOne({ _id: new ObjectId(noteId)/*, userId */});
   
