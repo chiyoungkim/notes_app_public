@@ -14,7 +14,7 @@ console.log(uri);
 const mongo = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
 
 const app = express();
-const port = process.env.port || 8080;
+const port = process.env.port || 4000;
 
 const sessionSecret = process.env.sessionSecret || 'your-session-secret';
 const saltRounds = 10;
