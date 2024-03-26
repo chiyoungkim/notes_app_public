@@ -8,7 +8,7 @@ const MongoStore = require('connect-mongo');
 const { MongoClient, ObjectId } = require('mongodb');
 
 const CryptoJS = require('crypto-js');
-const ENCRYPTION_KEY = 'your-encryption-key'; // Replace with your own encryption key
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'your-encryption-key'; // Replace with your own encryption key
 
 const uri = 'mongodb://localhost:27017';
 const mongo = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
@@ -16,7 +16,7 @@ const mongo = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: 
 const app = express();
 const port = process.env.port || 8080;
 
-const sessionSecret = 'your-session-secret';
+const sessionSecret = process.env.sessionSecret || 'your-session-secret';
 const saltRounds = 10;
 
 app.use(session({
