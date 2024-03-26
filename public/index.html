@@ -8,6 +8,32 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
 </head>
 
+<script>
+  document.addEventListener('DOMContentLoaded', async () => {
+    try {
+      const response = await fetch('/api/checkAuth', { credentials: 'include' });
+      
+      if (response.ok) {
+        const data = await response.json();
+
+        if (data.success) {
+          // Authentication successful
+          console.log('Login Success!');
+        } else {
+          console.log('Authentication failed');
+          window.location.href = '/login.html';
+        }
+      } else {
+        console.log('Authentication request failed');
+        window.location.href = '/login.html';
+      }
+    } catch (error) {
+      console.error('Error checking authentication:', error);
+      window.location.href = '/login.html';
+    }
+  });
+</script>
+
 <body>
   <div id="app">
     <div id="loading-spinner" class="hidden">
@@ -20,6 +46,7 @@
         <ul>
           <li><a href="landing.html">Home</a></li>
           <li><a href="guide.html">How-to-Use Guide</a></li> <!-- Other navigation items -->
+          <li><button id="logout-button">Logout</button></li>
         </ul>
       </nav><div id="api-key-container"> <button id="set-api-key">Set API Key</button> </div> <button id="toggle-flyout"> <i class="fas fa-bars"></i> </button>
     </header>

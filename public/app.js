@@ -23,34 +23,28 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchNotes(true);
 
   // Fetch notes from the server
-  async function fetchNotes(playAnimation = false) {
-    try {
-      showLoadingSpinner();
-      const sessionToken = sessionStorage.getItem('sessionToken');
-      const response = await fetch('/api/notes', {
-        method: 'GET',
-        // headers: {
-        //   'Authorization': sessionToken,        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          notes = data.notes;
-          renderNotes(playAnimation);
-          updateTagSelect();
-        } else {
-          console.error('Error fetching notes:', data.error);
-        }
+  async function fetchNotes() {
+  try {
+    showLoadingSpinner();
+    const response = await fetch('/api/notes');
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success) {
+        notes = data.notes;
+        renderNotes();
+        updateTagSelect();
       } else {
-        console.error('Error fetching notes');
+        console.error('Error fetching notes:', data.error);
       }
-    } catch (error) {
-      console.error('Error fetching notes:', error);
-    } finally {
-      hideLoadingSpinner();
+    } else {
+      console.error('Error fetching notes');
     }
+  } catch (error) {
+    console.error('Error fetching notes:', error);
+  } finally {
+    hideLoadingSpinner();
   }
+}
 
 // renderNotes(true);
 
@@ -135,7 +129,7 @@ setApiKeyButton.addEventListener('click', async () => {
           saveApiKeyButton.style.display = 'block';
         }
       }
-      if (setApiKeyButton.textContent == 'Update API Key') {
+      if (setApiKeyButton.textContent == 'Update API Key' || setApiKeyButton.textContent == 'Set API Key') {
         setApiKeyButton.textContent = 'Return';
       } else {
         setApiKeyButton.textContent = 'Update API Key';
@@ -281,13 +275,14 @@ function filterNotes() {
 function renderNotes(playAnimation = false) {
   const filteredNotes = filterNotes();
   const prioritizeSelectedNotes = document.getElementById('prioritize-selected-notes').checked;
-  const selectedNotesArray = filteredNotes.filter(note => selectedNotes.includes(note));
-  const deselectedNotesArray = filteredNotes.filter(note => !selectedNotes.includes(note));
-  const sortedNotes = prioritizeSelectedNotes ? [...selectedNotesArray, ...deselectedNotesArray] : filteredNotes;
+  const selectedNotesArray = selectedNotes.map(selectedNote => selectedNote._id);
+  const sortedNotes = prioritizeSelectedNotes
+    ? [...selectedNotes, ...filteredNotes.filter(note => !selectedNotesArray.includes(note._id))]
+    : filteredNotes;
 
   notesContainer.innerHTML = '';
 
-    sortedNotes.forEach(note => {
+  sortedNotes.forEach(note => {
     const noteElement = document.createElement('div');
     noteElement.classList.add('note');
 
@@ -297,33 +292,20 @@ function renderNotes(playAnimation = false) {
     noteElement.addEventListener('click', (event) => {
       if (!noteElement.classList.contains('editing')) {
         event.stopPropagation();
-        const wasSelected = selectedNotes.find(selectedNote => selectedNote.id === note.id);
-        if (wasSelected) {
-          selectedNotes = selectedNotes.filter(selectedNote => selectedNote.id !== note.id);
+        const noteIndex = selectedNotes.findIndex(selectedNote => selectedNote._id === note._id);
+        if (noteIndex !== -1) {
+          selectedNotes.splice(noteIndex, 1);
           noteElement.classList.remove('selected');
         } else {
           selectedNotes.push(note);
           noteElement.classList.add('selected');
         }
 
-        if (prioritizeSelectedNotes) {
-          const noteIndex = Array.from(notesContainer.children).indexOf(noteElement);
-          notesContainer.removeChild(noteElement);
-          if (wasSelected) {
-            const lastSelectedNoteIndex = Array.from(notesContainer.children).findIndex(
-              child => !selectedNotes.includes(child.note)
-            );
-            notesContainer.insertBefore(noteElement, notesContainer.children[lastSelectedNoteIndex]);
-          } else {
-            notesContainer.insertBefore(noteElement, notesContainer.firstChild);
-          }
-        }
-
         renderNotes();
       }
     });
 
-    if (selectedNotes.find(selectedNote => selectedNote.id === note.id)) {
+    if (selectedNotesArray.includes(note._id)) {
       noteElement.classList.add('selected');
     } else {
       noteElement.classList.remove('selected');
@@ -348,7 +330,7 @@ function renderNotes(playAnimation = false) {
     editNoteButton.textContent = 'Edit';
     editNoteButton.addEventListener('click', (event) => {
       event.stopPropagation();
-      enableNoteEdit(note.id, noteElement, noteTextElement, noteTagsElement, editNoteButton);
+      enableNoteEdit(note._id, noteElement, noteTextElement, noteTagsElement, editNoteButton);
     });
     noteActionsElement.appendChild(editNoteButton);
 
@@ -356,7 +338,7 @@ function renderNotes(playAnimation = false) {
     deleteNoteButton.textContent = 'Delete';
     deleteNoteButton.addEventListener('click', (event) => {
       event.stopPropagation();
-      deleteNote(note.id);
+      deleteNote(note._id);
     });
     noteActionsElement.appendChild(deleteNoteButton);
     
@@ -373,7 +355,6 @@ function renderNotes(playAnimation = false) {
   });
 
   updateSummarizationInsightsButtons();
-  // renderSelectedNotes();
   updateSelectedNotesCount();
 }
 
@@ -416,9 +397,6 @@ async function saveNote() {
   const text = noteText.value.trim();
   let tags = noteTags.value.trim().split(',').map(tag => tag.trim());
 
-  const noteElement = document.querySelector(`.note[data-note-id="${noteId}"]`);
-  const isSelected = noteElement.classList.contains('selected');
-
   if (isAutoTaggingEnabled) {
     const generatedTags = await autoTagNote(text);
     if (tags.length > 1){
@@ -429,20 +407,21 @@ async function saveNote() {
     }
   }
 
-  if (isSelected) {
-    noteElement.classList.add('selected');
-    if (!selectedNotes.includes(note)) {
-      selectedNotes.push(note);
-    }
-  } else {
-    noteElement.classList.remove('selected');
-    selectedNotes = selectedNotes.filter(selectedNote => selectedNote.id !== note.id);
-  }
-
   if (text !== '') {
     if (noteId) {
       // Update existing note
       updateNote(noteId, text, tags);
+      const noteElement = document.querySelector(`.note[data-note-id="${noteId}"]`);
+      const isSelected = noteElement.classList.contains('selected');
+      if (isSelected) {
+        noteElement.classList.add('selected');
+        if (!selectedNotes.includes(note)) {
+          selectedNotes.push(note);
+        }
+      } else {
+        noteElement.classList.remove('selected');
+        selectedNotes = selectedNotes.filter(selectedNote => selectedNote._id !== note._id);
+      }
     } else {
       // Add new note
       createNote(text, tags);
@@ -451,25 +430,19 @@ async function saveNote() {
     noteTags.value = '';
     updateTagSelect();
     renderNotes();
-  }
+    noteInput.removeAttribute('data-note-id');
+  }  
 }
 
 // Create note function
 async function createNote(text, tags) {
   try {
-    const sessionToken = sessionStorage.getItem('sessionToken');
     const response = await fetch('/api/notes', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        // 'Authorization': sessionToken,
       },
-      body: JSON.stringify({
-        text,
-        tags,
-        createdAt: new Date().toISOString(),
-        lastEdited: new Date().toISOString(),
-      }),
+      body: JSON.stringify({ text, tags, createdAt: new Date().toISOString() }),
     });
 
     if (response.ok) {
@@ -479,31 +452,23 @@ async function createNote(text, tags) {
         fetchNotes();
         updateTagSelect();
       } else {
-        console.error('Error creating note:', data.error);
-      }
+        console.error('Error creating note:', data.error);      }
     } else {
       console.error('Error creating note');
     }
   } catch (error) {
-    console.error('Error creating note:', error);
-  }
+    console.error('Error creating note:', error);  }
 }
 
 // Update note function
 async function updateNote(noteId, text, tags) {
   try {
-    const sessionToken = sessionStorage.getItem('sessionToken');
     const response = await fetch(`/api/notes/${noteId}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        // 'Authorization': sessionToken,
       },
-      body: JSON.stringify({
-        text,
-        tags,
-        lastEdited: new Date().toISOString(),
-      }),
+      body: JSON.stringify({ text, tags, updatedAt: new Date().toISOString() }),
     });
 
     if (response.ok) {
@@ -527,12 +492,8 @@ async function updateNote(noteId, text, tags) {
 async function deleteNote(noteId) {
   if (confirm('Are you sure you want to delete this note?')) {
     try {
-      const sessionToken = sessionStorage.getItem('sessionToken');
       const response = await fetch(`/api/notes/${noteId}`, {
         method: 'DELETE',
-        headers: {
-          // 'Authorization': sessionToken,
-        },
       });
 
       if (response.ok) {
@@ -552,6 +513,7 @@ async function deleteNote(noteId) {
     }
   }
 }
+
 // Event listeners
 searchInput.addEventListener('input', renderNotes);
 
@@ -1152,81 +1114,16 @@ toggleFlyoutButton.addEventListener('click', toggleFlyoutPanel);
 //   }
 // });
 
-async function createUser(userId, email, name) {
-  try {
-    const response = await fetch('/api/signup', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ idToken: userId }),
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      if (data.success) {
-        console.log('User created successfully');
-        // Store the session token in local storage or cookies
-        // sessionStorage.setItem('sessionToken', data.sessionToken);
-        // Redirect to the main app page
-        window.location.href = '/index.html';
-      } else {
-        console.error('Error creating user:', data.error);
-      }
-    } else {
-      console.error('Error creating user');
-    }
-  } catch (error) {
-    console.error('Error creating user:', error);
-  }
-}
-
-async function loginUser(userId) {
-  try {
-    const response = await fetch('/api/login', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ idToken: userId }),
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      if (data.success) {
-        console.log('User logged in successfully');
-        // Store the session token in local storage or cookies
-        // sessionStorage.setItem('sessionToken', data.sessionToken);
-        // Redirect to the main app page
-        window.location.href = '/index.html';
-      } else {
-        console.error('Error logging in:', data.error);
-      }
-    } else {
-      console.error('Error logging in');
-    }
-  } catch (error) {
-    console.error('Error logging in:', error);
-  }
-}
-
 async function logoutUser() {
   try {
-    const sessionToken = sessionStorage.getItem('sessionToken');
     const response = await fetch('/api/logout', {
       method: 'POST',
-      headers: {
-        'Authorization': sessionToken,
-      },
     });
 
     if (response.ok) {
       const data = await response.json();
       if (data.success) {
         console.log('User logged out successfully');
-        // Clear the session token from local storage or cookies
-        sessionStorage.removeItem('sessionToken');
-        // Redirect to the landing page or login page
         window.location.href = '/landing.html';
       } else {
         console.error('Error logging out:', data.error);
@@ -1239,11 +1136,11 @@ async function logoutUser() {
   }
 }
 
-// const logoutButton = document.getElementById('logout-button');
+const logoutButton = document.getElementById('logout-button');
 
-// logoutButton.addEventListener('click', () => {
-//   logoutUser();
-// });
+logoutButton.addEventListener('click', () => {
+  logoutUser();
+});
 
 function updateSummarizationInsightsButtons() {
   const summarizeNotesButton = document.getElementById('summarize-notes');
@@ -1332,7 +1229,7 @@ function updateSelectedNotesCount() {
 deleteSelectedNotesButton.addEventListener('click', () => {
   if (selectedNotes.length > 0) {
     if (confirm('Are you sure you want to delete the selected notes?')) {
-      selectedNotes.forEach(note => deleteNote(note.id));
+      selectedNotes.forEach(note => deleteNote(note._id));
       selectedNotes = [];
       renderNotes();
     }
@@ -1344,9 +1241,9 @@ updateSelectedNotesTagsButton.addEventListener('click', () => {
     const newTags = selectedNotesTagsInput.value.trim().split(',').map(tag => tag.trim()).filter(tag => tag !== '');
     selectedNotes.forEach(note => {
       if (note.tags == '') {
-        updateNoteTags(note.id, newTags);
+        updateNoteTags(note._id, newTags);
       } else {
-        updateNoteTags(note.id, note.tags.concat(newTags));
+        updateNoteTags(note._id, note.tags.concat(newTags));
       }
     });
     selectedNotesTagsInput.value = '';
@@ -1355,7 +1252,7 @@ updateSelectedNotesTagsButton.addEventListener('click', () => {
 });
 
 function updateNoteTags(noteId, tags) {
-  const note = notes.find(note => note.id === noteId);
+  const note = notes.find(note => note._id === noteId);
   if (note) {
     const uniqueTags = [...new Set(tags)];
     note.tags = uniqueTags;

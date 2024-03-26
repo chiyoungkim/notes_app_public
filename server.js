@@ -1,23 +1,30 @@
 const express = require('express');
 const cors = require('cors');
 const fetch = require('node-fetch');
-const jwt = require('jsonwebtoken');
-const { OAuth2Client } = require('google-auth-library');
+const bcrypt = require('bcrypt');
+const session = require('express-session');
+const MongoStore = require('connect-mongo');
+
 const { MongoClient, ObjectId } = require('mongodb');
 
 const CryptoJS = require('crypto-js');
 const ENCRYPTION_KEY = 'your-encryption-key'; // Replace with your own encryption key
 
-let anthropicApiKey = '';
-
-const JWT_SECRET = '3205569aa474e2fc5f8491fba8a5a04583a111137a2a13c119087f311ba80016';
-const CLIENT_ID = '445203401859-bssnu7thfvvmt6ulhsa1qd5ft90f7159.apps.googleusercontent.com';
-const client = new OAuth2Client(CLIENT_ID);
 const uri = 'mongodb://localhost:27017';
 const mongo = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
 
 const app = express();
 const port = process.env.port || 8080;
+
+const sessionSecret = 'your-session-secret';
+const saltRounds = 10;
+
+app.use(session({
+    secret: sessionSecret,
+    resave: false,
+    saveUninitialized: false,
+    store: new MongoStore({ mongoUrl: uri }),
+  }));
 
 let db;
 let usersCollection;
@@ -45,149 +52,108 @@ connectToDatabase();
 
 // ... Anthropic API route and other existing routes ...
 
-app.post('/api/signup', async (req, res) => {
-  const { idToken } = req.body;
+app.post('/api/register', async (req, res) => {
+    const { username, password } = req.body;
+  
+    try {
+      const hashedPassword = await bcrypt.hash(password, saltRounds);
+  
+      const newUser = {
+        username,
+        password: hashedPassword,
+        apiKey: '',
+        notes: [],
+      };
+  
+      const result = await usersCollection.insertOne(newUser);
 
-  try {
-    const ticket = await client.verifyIdToken({
-      idToken: idToken,
-      audience: CLIENT_ID,
-    });
-
-    const payload = ticket.getPayload();
-    const userId = payload['sub'];
-    const email = payload['email'];
-    const name = payload['name'];
-
-    // Check if the user already exists in the database
-    const existingUser = await usersCollection.findOne({ userId });
-    if (existingUser) {
-      return res.status(400).json({ success: false, error: 'User already exists' });
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error during registration:', error);
+      res.status(500).json({ success: false, error: 'Registration failed' });
     }
+  });
 
-    // Create a new user in the database
-    await usersCollection.insertOne({ userId, email, name });
-
-    // Generate a session token (e.g., JWT) for the user
-    const sessionToken = generateSessionToken(userId);
-
-    res.json({ success: true, sessionToken });
-  } catch (error) {
-    console.error('Error during sign up:', error);
-    res.status(401).json({ success: false, error: 'Authentication failed' });
-  }
-});
-
-app.post('/api/login', async (req, res) => {
-  const { idToken } = req.body;
-
-  try {
-    const ticket = await client.verifyIdToken({
-      idToken: idToken,
-      audience: CLIENT_ID,
-    });
-
-    const payload = ticket.getPayload();
-    const userId = payload['sub'];
-
-    // Check if the user exists in the database
-    const user = await usersCollection.findOne({ userId });
-    if (!user) {
-      return res.status(401).json({ success: false, error: 'User not found' });
+  app.post('/api/login', async (req, res) => {
+    const { username, password } = req.body;
+  
+    try {
+      const user = await usersCollection.findOne({ username });
+      if (!user) {
+        console.log('User not found');
+        return res.status(401).json({ success: false, error: 'Invalid username or password' });
+      }
+  
+      const passwordMatch = await bcrypt.compare(password, user.password);
+      if (!passwordMatch) {
+        console.log('Password does not match');
+        return res.status(401).json({ success: false, error: 'Invalid username or password' });
+      }
+  
+      req.session.userId = user._id.toString();
+      console.log('Session userId set:', req.session.userId);
+  
+      req.session.save((err) => {
+        if (err) {
+          console.error('Error saving session:', err);
+          return res.status(500).json({ success: false, error: 'Login failed' });
+        }
+        res.json({ success: true });
+      });
+    } catch (error) {
+      console.error('Error during login:', error);
+      res.status(500).json({ success: false, error: 'Login failed' });
     }
-
-    // Generate a session token (e.g., JWT) for the user
-    const sessionToken = generateSessionToken(userId);
-
-    res.json({ success: true, sessionToken });
-  } catch (error) {
-    console.error('Error during login:', error);
-    res.status(401).json({ success: false, error: 'Authentication failed' });
-  }
-});
-
-function generateSessionToken(userId) {
-  const token = jwt.sign({ userId }, JWT_SECRET, { expiresIn: '1h' });
-  return token;
-}
-
-function verifyToken(token) {
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    return decoded;
-  } catch (error) {
-    throw new Error('Invalid token');
-  }
-}
-
-function verifySessionToken(req, res, next) {
-  const sessionToken = req.headers.authorization;
-
-  if (!sessionToken) {
-    return res.status(401).json({ error: 'No session token provided' });
-  }
-
-  try {
-    const decodedToken = verifyToken(sessionToken);
-    req.userId = decodedToken.userId;
-    next();
-  } catch (error) {
-    console.error('Error verifying session token:', error);
-    res.status(401).json({ error: 'Invalid session token' });
-  }
-}
+  });
 
 // Apply the middleware to protected routes
-app.get('/api/protected', /* verifySessionToken, */  (req, res) => {
+app.get('/api/protected', requireAuth, (req, res) => {
   // Access the authenticated user's ID via req.userId
   // ...
 });
 
-app.post('/api/logout', /* verifySessionToken, */ (req, res) => {
-  // Invalidate the session token on the server-side
-  // You can clear the session token from your server-side storage or database
-  // ...
-
-  res.json({ success: true });
-});
+app.post('/api/logout', (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        console.error('Error during logout:', err);
+      }
+      res.json({ success: true });
+    });
+  });
 
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
 });
 
 // Create a new note
-app.post('/api/notes', /* verifySessionToken, */ async (req, res) => {
+app.post('/api/notes', requireAuth, async (req, res) => {
     const { text, tags } = req.body;
-    const userId = req.userId;
   
     try {
       const newNote = {
-        userId,
+        _id: new ObjectId(),
         text,
         tags,
         createdAt: new Date(),
       };
   
-      const result = await notesCollection.insertOne(newNote);
-      res.json({ success: true, noteId: result.insertedId });
+      const result = await usersCollection.updateOne(
+        { _id: req.user._id },
+        { $push: { notes: newNote } }
+      );
+  
+      res.json({ success: true, noteId: newNote._id });
     } catch (error) {
       console.error('Error creating note:', error);
       res.status(500).json({ success: false, error: 'An error occurred while creating the note' });
     }
   });
   
-  // Get all notes for a user
-  app.get('/api/notes', /* verifySessionToken, */ async (req, res) => {
-    const userId = req.userId;
   
+  // Get all notes for a user
+  app.get('/api/notes', requireAuth, async (req, res) => {
     try {
-      const notes = await notesCollection.find({ userId }).toArray();
-      const notesWithIds = notes.map(note => ({
-        id: note._id.toString(),
-        text: note.text,
-        tags: note.tags,
-      }));
-      res.json({ success: true, notes: notesWithIds });
+      res.json({ success: true, notes: req.user.notes || [] });
     } catch (error) {
       console.error('Error retrieving notes:', error);
       res.status(500).json({ success: false, error: 'An error occurred while retrieving notes' });
@@ -195,15 +161,14 @@ app.post('/api/notes', /* verifySessionToken, */ async (req, res) => {
   });
   
   // Update a note
-  app.put('/api/notes/:noteId', /* verifySessionToken, */  async (req, res) => {
+  app.put('/api/notes/:noteId', requireAuth, async (req, res) => {
     const { noteId } = req.params;
     const { text, tags } = req.body;
-    // const userId = req.userId;
   
     try {
-      const result = await notesCollection.updateOne(
-        { _id: new ObjectId(noteId)/*, userId */},
-        { $set: { text, tags, updatedAt: new Date() } }
+      const result = await usersCollection.updateOne(
+        { _id: req.user._id, 'notes._id': new ObjectId(noteId) },
+        { $set: { 'notes.$.text': text, 'notes.$.tags': tags, 'notes.$.updatedAt': new Date() } }
       );
   
       if (result.modifiedCount === 0) {
@@ -218,13 +183,16 @@ app.post('/api/notes', /* verifySessionToken, */ async (req, res) => {
   });
   
   // Delete a note
-  app.delete('/api/notes/:noteId', /* verifySessionToken, */  async (req, res) => {
+  app.delete('/api/notes/:noteId', requireAuth, async (req, res) => {
     const { noteId } = req.params;
-    // const userId = req.userId;
-    try {
-      const result = await notesCollection.deleteOne({ _id: new ObjectId(noteId)/*, userId */});
   
-      if (result.deletedCount === 0) {
+    try {
+      const result = await usersCollection.updateOne(
+        { _id: req.user._id },
+        { $pull: { notes: { _id: new ObjectId(noteId) } } }
+      );
+  
+      if (result.modifiedCount === 0) {
         return res.status(404).json({ success: false, error: 'Note not found' });
       }
   
@@ -235,23 +203,33 @@ app.post('/api/notes', /* verifySessionToken, */ async (req, res) => {
     }
   });
 
-  app.post('/api/saveApiKey', (req, res) => {
-    const { apiKey } = req.body;
-    const encryptedApiKey = CryptoJS.AES.encrypt(apiKey, ENCRYPTION_KEY).toString();
-    anthropicApiKey = encryptedApiKey;
+  app.post('/api/saveApiKey', requireAuth, async (req, res) => {
+  const { apiKey } = req.body;
+
+  try {
+    const result = await usersCollection.updateOne(
+      { _id: req.user._id },
+      { $set: { apiKey } }
+    );
+
     res.sendStatus(200);
-  });
+  } catch (error) {
+    console.error('Error saving API key:', error);
+    res.status(500).json({ error: 'An error occurred while saving the API key' });
+  }
+});
   
-  app.post('/api/anthropic', async (req, res) => {
+app.post('/api/anthropic', requireAuth, async (req, res) => {
     const { model, messages, max_tokens } = req.body;
   
-    if (!anthropicApiKey) {
-      return res.status(400).json({ error: 'Anthropic API key not available' });
-    }
-  
-    const decryptedApiKey = CryptoJS.AES.decrypt(anthropicApiKey, ENCRYPTION_KEY).toString(CryptoJS.enc.Utf8);
-  
     try {
+      const user = await usersCollection.findOne({ _id: req.user._id });
+      if (!user || !user.apiKey) {
+        return res.status(400).json({ error: 'Anthropic API key not available' });
+      }
+  
+      const decryptedApiKey = CryptoJS.AES.decrypt(user.apiKey, ENCRYPTION_KEY).toString(CryptoJS.enc.Utf8);
+  
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
@@ -278,14 +256,55 @@ app.post('/api/notes', /* verifySessionToken, */ async (req, res) => {
     }
   });
 
-  app.post('/api/updateApiKey', (req, res) => {
+  app.post('/api/updateApiKey', requireAuth, async (req, res) => {
     const { apiKey } = req.body;
-    const encryptedApiKey = CryptoJS.AES.encrypt(apiKey, ENCRYPTION_KEY).toString();
-    anthropicApiKey = encryptedApiKey;
-    res.sendStatus(200);
+  
+    try {
+      const encryptedApiKey = CryptoJS.AES.encrypt(apiKey, ENCRYPTION_KEY).toString();
+  
+      const result = await usersCollection.updateOne(
+        { _id: req.user._id },
+        { $set: { apiKey: encryptedApiKey } }
+      );
+  
+      res.sendStatus(200);
+    } catch (error) {
+      console.error('Error updating API key:', error);
+      res.status(500).json({ error: 'An error occurred while updating the API key' });
+    }
   });
 
-  app.get('/api/checkApiKey', (req, res) => {
-    const hasApiKey = !!anthropicApiKey;
+  app.get('/api/checkApiKey', requireAuth, (req, res) => {
+    const hasApiKey = !!req.user.apiKey;
     res.json({ hasApiKey });
+  });
+
+  async function requireAuth(req, res, next) {
+    console.log('Session userId:', req.session.userId);
+  
+    if (req.session.userId) {
+      try {
+        const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) });
+        console.log('User:', user);
+  
+        if (user) {
+          req.user = user;
+          next();
+        } else {
+          console.log('User not found');
+          res.status(401).json({ success: false, error: 'Unauthorized' });
+        }
+      } catch (error) {
+        console.error('Error retrieving user:', error);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+      }
+    } else {
+      console.log('No session userId');
+      res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+  }
+
+  app.get('/api/checkAuth', requireAuth, (req, res) => {
+    console.log('Authentication successful');
+    res.json({ success: true });
   });
