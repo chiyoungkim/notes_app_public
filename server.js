@@ -9,8 +9,8 @@ const { MongoClient, ObjectId } = require('mongodb');
 
 const CryptoJS = require('crypto-js');
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'your-encryption-key'; // Replace with your own encryption key
-
-const uri = 'mongodb://localhost:27017';
+const uri = process.env.MONGO_SERVER || 'mongodb://localhost:27017';
+console.log(uri);
 const mongo = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
 
 const app = express();
